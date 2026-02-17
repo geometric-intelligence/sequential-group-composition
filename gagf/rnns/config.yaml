@@ -63,7 +63,7 @@ training:
   
   # Steps/Epochs
   epochs: 200                 # Used when mode='offline'
-  num_steps: 1000000 #500000           # Used when mode='online'
+  num_steps: 2000000 #500000           # Used when mode='online'
   
   # Optimizer
   optimizer: 'adam' #per_neuron'           # 'auto' | 'adam' | 'hybrid' | 'per_neuron'
@@ -98,7 +98,7 @@ training:
   # -------------------------
   # Stop training early when loss reduction reaches a threshold.
   # Set to null to disable (train for full num_steps/epochs).
-  reduction_threshold: 0.99   # e.g., 0.99 = stop when 99% loss reduction achieved
+  reduction_threshold: 0.999   # e.g., 0.99 = stop when 99% loss reduction achieved
                               # null = disabled (train for full steps/epochs)
 
 # Device

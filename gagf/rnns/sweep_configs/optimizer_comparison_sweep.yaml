@@ -1,0 +1,35 @@
+# Optimizer Comparison Sweep: Adam vs PerNeuronScaledSGD
+# =====================================================
+# Tests the hypothesis that PerNeuronScaledSGD converges faster than Adam
+# for SequentialMLP on modular addition.
+#
+# Total experiments: 3 (p) × 3 (hidden_dim) × 2 (optimizer) × 5 (lr) = 90
+
+base_config: "gagf/rnns/config.yaml"
+n_seeds: 1
+
+# Fixed parameters for all experiments
+global_overrides:
+  data:
+    dimension: 1
+    template_type: 'onehot'
+    k: 2  # Fixed sequence length
+  model:
+    model_type: 'SequentialMLP'
+  training:
+    mode: 'online'
+    num_steps: 500000  # Enough steps to see convergence behavior
+    reduction_threshold: 0.999  # Early stopping when 99.9% loss reduction
+
+# Parameter grid: Cartesian product of all parameter lists
+parameter_grid:
+  data:
+    p: [10, 25, 50]  # Group sizes
+  model:
+    hidden_dim: [160, 320, 640]  # Hidden dimensions
+  training:
+    optimizer: ['adam', 'per_neuron']
+    # Learning rates spanning optimal ranges for both optimizers:
+    # - Adam optimal: ~1e-3
+    # - PerNeuronScaledSGD optimal: ~1.0
+    learning_rate: [0.0001, 0.001, 0.01, 0.1, 1.0]

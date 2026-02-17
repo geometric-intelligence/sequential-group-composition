@@ -192,7 +192,7 @@ def train_online(
     
     if reduction_threshold is not None:
         print(f"  Initial loss: {initial_loss:.6f}")
-        print(f"  Early stopping at {reduction_threshold*100:.1f}% reduction")
+        print(f"  Early stopping at {reduction_threshold*100:.6f}% reduction")
     
     # Training loop
     model.train()

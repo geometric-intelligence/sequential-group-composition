@@ -12,6 +12,7 @@ import yaml
 import argparse
 import datetime
 import copy
+import contextlib
 from typing import List, Dict, Any, Tuple, Optional
 from pathlib import Path
 from itertools import product
@@ -269,8 +270,16 @@ def run_single_seed(
         # Import here to avoid circular dependency
         from gagf.rnns.main import train_single_run
         
-        # Run training
-        result = train_single_run(seed_config, run_dir=seed_dir)
+        # Check if quiet mode is enabled (suppress stdout but keep stderr for errors)
+        quiet = seed_config.get('training', {}).get('quiet', False)
+        
+        # Run training (with optional stdout suppression)
+        if quiet:
+            with open(os.devnull, 'w') as devnull:
+                with contextlib.redirect_stdout(devnull):
+                    result = train_single_run(seed_config, run_dir=seed_dir)
+        else:
+            result = train_single_run(seed_config, run_dir=seed_dir)
         
         # Save run summary
         run_summary = {
@@ -288,11 +297,13 @@ def run_single_seed(
         with open(summary_path, "w") as f:
             yaml.dump(run_summary, f, default_flow_style=False, indent=2)
         
-        print(f"✓ {exp_name} seed {seed} completed successfully (GPU: {gpu_id})")
-        if run_summary['final_train_loss'] is not None:
-            print(f"  Train loss: {run_summary['final_train_loss']:.6f}")
-        if run_summary['final_val_loss'] is not None:
-            print(f"  Val loss: {run_summary['final_val_loss']:.6f}")
+        # Only print detailed success message if not in quiet mode
+        if not quiet:
+            print(f"✓ {exp_name} seed {seed} completed successfully (GPU: {gpu_id})")
+            if run_summary['final_train_loss'] is not None:
+                print(f"  Train loss: {run_summary['final_train_loss']:.6f}")
+            if run_summary['final_val_loss'] is not None:
+                print(f"  Val loss: {run_summary['final_val_loss']:.6f}")
         
         return run_summary
         

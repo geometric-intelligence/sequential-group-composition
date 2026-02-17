@@ -9,7 +9,7 @@ n_seeds: 1
 
 global_overrides:
   training:
-    num_steps: 1000
+    num_steps: 1000000
 
 # Parameter sweep configurations
 experiments:
