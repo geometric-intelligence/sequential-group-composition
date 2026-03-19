@@ -315,19 +315,31 @@ def produce_plots_1d(
     print(f"Total data space: {total_space_size:,} sequences")
     print(f"Samples seen: {samples_seen[-1]:,} ({fraction_of_space[-1] * 100:.4f}% of space)")
 
+    model_type = config["model"]["model_type"]
+    template_type = config["data"]["template_type"]
+    use_group_style = model_type == "TwoLayerNet" and template_type == "custom_fourier"
+
     ### ----- GENERATE EVALUATION DATA ----- ###
     print("Generating evaluation data for visualization...")
-    X_seq_1d, Y_seq_1d, _ = dataset.build_modular_addition_sequence_dataset_1d(
-        config["data"]["p"],
-        template_1d,
-        config["data"]["k"],
-        mode="sampled",
-        num_samples=min(config["data"]["num_samples"], 1000),
-        return_all_outputs=config["model"]["return_all_outputs"],
-    )
-    X_seq_1d_t = torch.tensor(X_seq_1d, dtype=torch.float32, device=device)
-    Y_seq_1d_t = torch.tensor(Y_seq_1d, dtype=torch.float32, device=device)
-    print(f"  Generated {X_seq_1d_t.shape[0]} samples for visualization")
+
+    if use_group_style:
+        X_raw, Y_raw = dataset.cn_dataset(template_1d)
+        X_eval_t, Y_eval_t, device = dataset.move_dataset_to_device_and_flatten(
+            X_raw, Y_raw, device=device
+        )
+        print(f"  Generated {X_eval_t.shape[0]} samples for visualization")
+    else:
+        X_seq_1d, Y_seq_1d, _ = dataset.build_modular_addition_sequence_dataset_1d(
+            config["data"]["p"],
+            template_1d,
+            config["data"]["k"],
+            mode="sampled",
+            num_samples=min(config["data"]["num_samples"], 1000),
+            return_all_outputs=config["model"]["return_all_outputs"],
+        )
+        X_seq_1d_t = torch.tensor(X_seq_1d, dtype=torch.float32, device=device)
+        Y_seq_1d_t = torch.tensor(Y_seq_1d, dtype=torch.float32, device=device)
+        print(f"  Generated {X_seq_1d_t.shape[0]} samples for visualization")
 
     ### ----- COMPUTE CHECKPOINT INDICES ----- ###
     total_checkpoints = len(param_hist)
@@ -342,9 +354,7 @@ def produce_plots_1d(
     ### ----- PLOT TRAINING LOSS ----- ###
     print("\nPlotting training loss...")
 
-    # Create a 2x2 subplot for different scale combinations
     fig, axes = plt.subplots(2, 2, figsize=(12, 10))
-
     x_values = steps if training_mode == "online" else epochs
 
     scale_configs = [
@@ -362,44 +372,77 @@ def produce_plots_1d(
         ax.set_ylabel("Training Loss")
         ax.set_title(title)
         ax.grid(True, alpha=0.3)
+        if yscale == "log":
+            ax.set_ylim(bottom=1.0)
+
+    if use_group_style:
+        lr = config["training"]["learning_rate"]
+        hidden_dim = config["model"]["hidden_dim"]
+        init_scale = config["model"]["init_scale"]
+        group_label = f"C{p}"
+        plt.suptitle(
+            f"{group_label} Composition (k={k}, lr={lr}, h={hidden_dim}, init={init_scale:.0e})",
+            fontsize=14,
+        )
 
     plt.tight_layout()
     plt.savefig(os.path.join(run_dir, "training_loss.pdf"), bbox_inches="tight", dpi=150)
     plt.close()
-    print("  ✓ Saved training loss plot (all scales)")
+    print(f"  ✓ Saved {os.path.join(run_dir, 'training_loss.pdf')}")
 
     ### ----- PLOT MODEL PREDICTIONS ----- ###
-    print("Plotting model predictions over time...")
-    viz.plot_predictions_1d(
-        model,
-        param_hist,
-        X_seq_1d_t,
-        Y_seq_1d_t,
-        p,
-        steps=checkpoint_indices,
-        save_path=os.path.join(run_dir, "predictions_over_time.pdf"),
-        show=False,
-    )
+    if not use_group_style:
+        print("Plotting model predictions over time...")
+        viz.plot_predictions_1d(
+            model,
+            param_hist,
+            X_seq_1d_t,
+            Y_seq_1d_t,
+            p,
+            steps=checkpoint_indices,
+            save_path=os.path.join(run_dir, "predictions_over_time.pdf"),
+            show=False,
+        )
 
     ### ----- PLOT POWER SPECTRUM ANALYSIS ----- ###
-    print("Analyzing power spectrum of predictions over training...")
-    viz.plot_power_1d(
-        model,
-        param_hist,
-        X_seq_1d_t,
-        Y_seq_1d_t,
-        template_1d,
-        p,
-        loss_history=train_loss_hist,
-        param_save_indices=param_save_indices,
-        num_freqs_to_track=min(10, p // 4),
-        checkpoint_indices=checkpoint_indices,
-        num_samples=100,
-        save_path=os.path.join(run_dir, "power_spectrum_analysis.pdf"),
-        show=False,
-    )
+    print("Plotting power spectrum over time...")
 
-    print("\n✓ All 1D plots generated successfully!")
+    if use_group_style:
+        optimizer_name = config["training"]["optimizer"]
+        init_scale = config["model"]["init_scale"]
+        viz.plot_power_cn(
+            model=model,
+            param_hist=param_hist,
+            param_save_indices=param_save_indices,
+            X_eval=X_eval_t,
+            template_1d=template_1d,
+            p=p,
+            k=k,
+            optimizer=optimizer_name,
+            init_scale=init_scale,
+            save_path=os.path.join(run_dir, "power_spectrum_analysis.pdf"),
+            group_label=f"C{p}",
+            learning_rate=config["training"]["learning_rate"],
+            hidden_dim=config["model"]["hidden_dim"],
+        )
+    else:
+        viz.plot_power_1d(
+            model,
+            param_hist,
+            X_seq_1d_t,
+            Y_seq_1d_t,
+            template_1d,
+            p,
+            loss_history=train_loss_hist,
+            param_save_indices=param_save_indices,
+            num_freqs_to_track=min(10, p // 4),
+            checkpoint_indices=checkpoint_indices,
+            num_samples=100,
+            save_path=os.path.join(run_dir, "power_spectrum_analysis.pdf"),
+            show=False,
+        )
+
+    print(f"\n✓ All C{p} plots generated successfully!")
 
 
 def produce_plots_group(
@@ -636,6 +679,20 @@ def train_single_run(config: dict, run_dir: Path = None) -> dict:
             template_1d = template.gaussian_1d(p, n_gaussians=3, seed=config["data"]["seed"])
         elif template_type == "onehot":
             template_1d = template.onehot_1d(p)
+        elif template_type == "custom_fourier":
+            powers = config["data"]["powers"]
+            n_modes = (p + 1) // 2 if p % 2 == 1 else p // 2 + 1
+            assert len(powers) == n_modes, (
+                f"powers length {len(powers)} must equal number of frequency modes {n_modes} for p={p}"
+            )
+            fourier_coef_mags = [0.0]  # DC component
+            for k_mode in range(1, len(powers)):
+                mag = np.sqrt(powers[k_mode] * p / 2.0)
+                fourier_coef_mags.append(mag)
+            print(f"Template type: custom_fourier")
+            print(f"Desired powers (per freq mode): {powers}")
+            print(f"Fourier coef magnitudes: {fourier_coef_mags}")
+            template_1d = template.fixed_cn(p, fourier_coef_mags)
         else:
             raise ValueError(f"Unknown template_type: {template_type}")
 

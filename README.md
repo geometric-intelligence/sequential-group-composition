@@ -74,11 +74,11 @@ The repository includes preconfigured experiments for six groups:
 
 | Group | Config | Order | Architecture |
 |:------|:-------|:-----:|:-------------|
-| Cyclic $C_{10}$ | `src/config_c10.yaml` | 10 | SequentialMLP |
-| Product $C_4 \times C_4$ | `src/config_c4x4.yaml` | 16 | SequentialMLP |
+| Cyclic $C_{10}$ | `src/config_c10_k3.yaml` | 10 | SequentialMLP |
+| Product $C_4 \times C_4$ | `src/config_c4x4_k3.yaml` | 16 | SequentialMLP |
 | Dihedral $D_3$ | `src/config_d3.yaml` | 6 | TwoLayerNet |
 | Dihedral $D_5$ | `src/config_d5.yaml` | 10 | TwoLayerNet |
-| Octahedral $O_h$ | `src/config_octahedral.yaml` | 24 | TwoLayerNet |
+| Octahedral $O_h$ | `src/config_oh.yaml` | 24 | TwoLayerNet |
 | Icosahedral $A_5$ | `src/config_a5.yaml` | 60 | TwoLayerNet |
 
 ### Parameter Sweeps
