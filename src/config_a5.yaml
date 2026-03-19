@@ -14,12 +14,13 @@ data:
 
   # custom_fourier powers (one per irrep)
   # A5 irreps: [1, 3, 5, 3, 4]
-  powers: [0.0, 1300.0, 0.0, 2000.0, 0.0]
+  # From screenshot: rho3(3D)~2000, rho1(3D)~1300, rho4(4D)~600, rho2(5D)~100
+  powers: [0.0, 1300.0, 100.0, 2000.0, 600.0]
 
 model:
   model_type: TwoLayerNet
-  hidden_dim: 1200  # hidden_factor=30 * group_size=60
-  init_scale: 0.001  # 1e-3 from default_config
+  hidden_dim: 400
+  init_scale: 0.001
   nonlinearity: square
   output_scale: 1.0
   return_all_outputs: false
@@ -27,17 +28,18 @@ model:
 
 training:
   mode: offline
-  epochs: 1000
+  epochs: 5000
   num_steps: 100
   optimizer: per_neuron
-  learning_rate: 0.001
+  learning_rate: 0.02
   betas: [0.9, 0.999]
   weight_decay: 0.0
   degree: null
   scaling_factor: -3
   grad_clip: 0.1
-  verbose_interval: 100
+  verbose_interval: 200
   save_param_interval: 10
+  dense_save_until: 10
   reduction_threshold: null
 
 device: cuda:0
