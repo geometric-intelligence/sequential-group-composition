@@ -1,25 +1,24 @@
 # ============================================================================
-# Configuration: Icosahedral Group (A5)
+# Configuration: Cyclic Group C_11
 # ============================================================================
-# A5 (Icosahedral) group has order 60 and 5 irreps with dimensions [1, 3, 5, 3, 4]
+# C11 has order 11 and 6 frequency modes (0 through 5), all 1D
 
 data:
-  group_name: A5
+  group_name: cn
+  p: 11
   k: 2
-  batch_size: 128
+  batch_size: 256
   seed: 10
   template_type: custom_fourier
-  mode: sampled
+  mode: exhaustive
   num_samples: 1000
 
-  # custom_fourier powers (one per irrep)
-  # A5 irreps: [1, 3, 5, 3, 4]
-  # From screenshot: rho3(3D)~2000, rho1(3D)~1300, rho4(4D)~600, rho2(5D)~100
-  powers: [0.0, 1300.0, 100.0, 2000.0, 600.0]
+  # custom_fourier powers (one per frequency mode 0..5)
+  powers: [0.0, 200.0, 100.0, 50.0, 20.0, 5.]
 
 model:
   model_type: TwoLayerNet
-  hidden_dim: 400
+  hidden_dim: 100
   init_scale: 0.001
   nonlinearity: square
   output_scale: 1.0
@@ -38,7 +37,7 @@ training:
   scaling_factor: -3
   grad_clip: 0.1
   verbose_interval: 200
-  save_param_interval: 10
+  save_param_interval: 1
   dense_save_until: 10
   reduction_threshold: null
 
