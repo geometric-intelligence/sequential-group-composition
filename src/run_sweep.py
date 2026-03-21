@@ -130,6 +130,7 @@ def generate_experiment_name(overrides: dict) -> str:
         "n_freqs": "f",
         "learning_rate": "lr",
         "batch_size": "bs",
+        "init_scale": "is",
     }
 
     def extract_params(d, prefix=""):
