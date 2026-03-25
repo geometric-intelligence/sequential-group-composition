@@ -410,33 +410,6 @@ def build_modular_addition_sequence_dataset_generic(
     return X, Y, sequence
 
 
-def sequence_to_paths_xy(sequence_xy: np.ndarray, p1: int, p2: int) -> np.ndarray:
-    """
-    Convert a sequence of group elements (ax_t, ay_t) into cumulative positions
-    after each token, modulo (p1, p2).
-
-    Args:
-        sequence_xy: (N, k, 2) integers, NOT cumulative
-        p1, p2: moduli for rows/cols
-
-    Returns:
-        paths_xy: (N, k, 2) where paths_xy[n, t] = (sum_{u<=t} ax_u mod p1, sum_{u<=t} ay_u mod p2)
-    """
-    seq = sequence_xy.astype(np.int64, copy=False)
-    N, k, _ = seq.shape
-    paths_xy = np.empty_like(seq)
-
-    # cumulative along time axis, modulo each dimension
-    paths_xy[:, :, 0] = np.mod(np.cumsum(seq[:, :, 0], axis=1, dtype=np.int64), p1)
-    paths_xy[:, :, 1] = np.mod(np.cumsum(seq[:, :, 1], axis=1, dtype=np.int64), p2)
-    return paths_xy
-
-
-# ---------------------------------------------------------------------------
-# Dataset functions moved from datasets.py
-# ---------------------------------------------------------------------------
-
-
 def group_dataset(group, template):
     """Generate a dataset of group elements acting on the template.
 
@@ -509,22 +482,22 @@ def cnxcn_dataset(template):
     Y : np.ndarray
         Output data of shape (image_length^4, image_length*image_length).
     """
-    image_length = int(np.sqrt(len(template)))
+    image_length, _ = template.shape
     X = np.zeros((image_length**4, 2, image_length * image_length))
     Y = np.zeros((image_length**4, image_length * image_length))
     translations = np.zeros((image_length**4, 3, 2), dtype=int)
 
     idx = 0
-    template_2d = template.reshape((image_length, image_length))
+
     for a_x in range(image_length):
         for a_y in range(image_length):
             for b_x in range(image_length):
                 for b_y in range(image_length):
                     q_x = (a_x + b_x) % image_length
                     q_y = (a_y + b_y) % image_length
-                    X[idx, 0, :] = np.roll(np.roll(template_2d, a_x, axis=0), a_y, axis=1).flatten()
-                    X[idx, 1, :] = np.roll(np.roll(template_2d, b_x, axis=0), b_y, axis=1).flatten()
-                    Y[idx, :] = np.roll(np.roll(template_2d, q_x, axis=0), q_y, axis=1).flatten()
+                    X[idx, 0, :] = np.roll(np.roll(template, a_x, axis=0), a_y, axis=1).flatten()
+                    X[idx, 1, :] = np.roll(np.roll(template, b_x, axis=0), b_y, axis=1).flatten()
+                    Y[idx, :] = np.roll(np.roll(template, q_x, axis=0), q_y, axis=1).flatten()
                     translations[idx, 0, :] = (a_x, a_y)
                     translations[idx, 1, :] = (b_x, b_y)
                     translations[idx, 2, :] = (q_x, q_y)
