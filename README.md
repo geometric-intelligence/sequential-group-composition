@@ -188,8 +188,8 @@ group-agf/
 
 ### `dataset.py` -- Data Generation
 
-- **Online datasets**: `OnlineModularAdditionDataset1D`, `OnlineModularAdditionDataset2D` -- generate samples on-the-fly (GPU-accelerated), also provide `generate_dataset()` for fixed/offline datasets
-- **Offline composition**: `OfflineModularCompositionDataset` -- static dataset builder with three methods: `group_dataset` (any escnn group via its regular representation), `cn_dataset` (cyclic C_n), `cnxcn_dataset` (product C_n x C_n), plus `to_device_and_flatten` for TwoLayerNet input preparation
+- **Online datasets**: `OnlineModularAdditionDataset1D`, `OnlineModularAdditionDataset2D` -- generate samples on-the-fly (GPU-accelerated) via `__iter__`
+- **Offline composition**: `OfflineModularCompositionDataset(Dataset)` -- PyTorch map-style dataset with classmethod constructors: `from_group` (any escnn group via its regular representation), `from_cn` (cyclic C_p), `from_cnxcn` (product C_{p1} x C_{p2}); all support arbitrary sequence length `k`, sampled/exhaustive mode, and `return_all_outputs`; supports `__len__` / `__getitem__` for use with `DataLoader`
 
 ### `template.py` -- Template Construction
 

@@ -1,6 +1,6 @@
 import numpy as np
 import torch
-from torch.utils.data import IterableDataset
+from torch.utils.data import Dataset, IterableDataset
 
 
 class OnlineModularAdditionDataset2D(IterableDataset):
@@ -119,72 +119,6 @@ class OnlineModularAdditionDataset2D(IterableDataset):
 
             yield X, Y
 
-    @staticmethod
-    def generate_dataset(
-        p1: int,
-        p2: int,
-        template: np.ndarray,
-        k: int,
-        mode: str = "sampled",
-        num_samples: int = 65536,
-        return_all_outputs: bool = False,
-    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """
-        Generate a fixed 2D modular addition dataset.
-
-        Args:
-            p1: height (rows) dimension
-            p2: width  (cols) dimension
-            template: (p1, p2) template array
-            k: sequence length
-            mode: "sampled" or "exhaustive"
-            num_samples: number of samples for "sampled" mode
-            return_all_outputs: if True, return intermediate outputs
-
-        Returns:
-            X:           (N, k, p1*p2) input sequences (flattened rolled templates)
-            Y:           (N, p1*p2) or (N, k, p1*p2) targets
-            sequence_xy: (N, k, 2) integer group elements (ax_t, ay_t) per token
-        """
-        assert template.shape == (p1, p2), f"template must be ({p1}, {p2}), got {template.shape}"
-        p_flat = p1 * p2
-
-        if mode == "exhaustive":
-            total = (p1 * p2) ** k
-            if total > 1_000_000:
-                raise ValueError(f"(p1*p2)**k = {total} is huge; use mode='sampled' instead.")
-            N = total
-            sequence_xy = np.zeros((N, k, 2), dtype=np.int64)
-            for idx in range(N):
-                for t in range(k):
-                    flat_idx = (idx // (p_flat**t)) % p_flat
-                    ax = flat_idx // p2
-                    ay = flat_idx % p2
-                    sequence_xy[idx, t, 0] = ax
-                    sequence_xy[idx, t, 1] = ay
-        else:
-            N = int(num_samples)
-            sequence_xy = np.empty((N, k, 2), dtype=np.int64)
-            sequence_xy[:, :, 0] = np.random.randint(0, p1, size=(N, k))
-            sequence_xy[:, :, 1] = np.random.randint(0, p2, size=(N, k))
-
-        X = np.zeros((N, k, p_flat), dtype=np.float32)
-        Y = np.zeros((N, k, p_flat), dtype=np.float32)
-
-        for i in range(N):
-            sx, sy = 0, 0
-            for t in range(k):
-                ax, ay = int(sequence_xy[i, t, 0]), int(sequence_xy[i, t, 1])
-                rolled = np.roll(np.roll(template, shift=ax, axis=0), shift=ay, axis=1)
-                X[i, t, :] = rolled.ravel()
-                sx = (sx + ax) % p1
-                sy = (sy + ay) % p2
-                Y[i, t, :] = np.roll(np.roll(template, shift=sx, axis=0), shift=sy, axis=1).ravel()
-
-        if not return_all_outputs:
-            Y = Y[:, -1, :]
-
-        return X, Y, sequence_xy
 
 
 class OnlineModularAdditionDataset1D(IterableDataset):
@@ -270,101 +204,62 @@ class OnlineModularAdditionDataset1D(IterableDataset):
 
             yield X, Y
 
-    @staticmethod
-    def generate_dataset(
-        p: int,
-        template: np.ndarray,
-        k: int,
-        mode: str = "sampled",
-        num_samples: int = 65536,
-        return_all_outputs: bool = False,
-    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """
-        Generate a fixed 1D modular addition dataset for cyclic group C_p.
-
-        Args:
-            p: dimension of cyclic group
-            template: (p,) template array
-            k: sequence length
-            mode: "sampled" or "exhaustive"
-            num_samples: number of samples for "sampled" mode
-            return_all_outputs: if True, return intermediate outputs
-
-        Returns:
-            X: (N, k, p) where token t is template rolled by shift_t
-            Y: (N, p) or (N, k-1, p) target rolled by cumulative sum
-            sequence: (N, k) integer group elements (shifts) per token
-        """
-        assert template.shape == (p,), f"template must be ({p},), got {template.shape}"
-
-        if mode == "exhaustive":
-            total = p**k
-            if total > 1_000_000:
-                raise ValueError(f"p^k = {total} is huge; use mode='sampled' instead.")
-            N = total
-            sequence = np.zeros((N, k), dtype=np.int64)
-            for idx in range(N):
-                for t in range(k):
-                    sequence[idx, t] = (idx // (p**t)) % p
-        else:
-            N = int(num_samples)
-            sequence = np.random.randint(0, p, size=(N, k), dtype=np.int64)
-
-        X = np.zeros((N, k, p), dtype=np.float32)
-        Y = np.zeros((N, k, p), dtype=np.float32)
-
-        for i in range(N):
-            cumsum = 0
-            for t in range(k):
-                shift = int(sequence[i, t])
-                X[i, t, :] = np.roll(template, shift)
-                cumsum = (cumsum + shift) % p
-                Y[i, t, :] = np.roll(template, cumsum)
-
-        if not return_all_outputs:
-            Y = Y[:, -1, :]
-        else:
-            Y = Y[:, 1:, :]
-
-        return X, Y, sequence
 
 
-class OfflineModularCompositionDataset:
-    """Offline dataset builder for group composition tasks.
+class OfflineModularCompositionDataset(Dataset):
+    """PyTorch map-style dataset for group composition tasks.
 
-    Generates all (or sampled) input-output pairs for composing group elements
-    via the regular representation applied to a template.
+    Stores pre-generated input-output pairs as float32 tensors and supports
+    indexing via ``__getitem__`` / ``__len__`` for use with ``DataLoader``.
 
-    Three factory methods cover the supported group families:
-      - group_dataset : any escnn group with a regular representation
-      - cn_dataset    : cyclic group C_n (uses np.roll, no escnn needed)
-      - cnxcn_dataset : product group C_n x C_n (uses 2D np.roll, no escnn needed)
+    Construct instances via the factory classmethods:
+      - :meth:`from_group`  -- any escnn group with a regular representation
+      - :meth:`from_cn`     -- cyclic group C_p (1D np.roll, no escnn needed)
+      - :meth:`from_cnxcn`  -- product group C_{p1} x C_{p2} (2D np.roll, no escnn needed)
+
+    All factories support arbitrary sequence length ``k``, ``"sampled"`` /
+    ``"exhaustive"`` mode, and ``return_all_outputs``.
     """
 
-    @staticmethod
-    def group_dataset(
+    def __init__(self, X: np.ndarray, Y: np.ndarray):
+        """Create a dataset from numpy arrays.
+
+        Parameters
+        ----------
+        X : np.ndarray
+            Input data (any shape with first axis = N).
+        Y : np.ndarray
+            Target data (any shape with first axis = N).
+        """
+        self.X = torch.tensor(np.asarray(X), dtype=torch.float32)
+        self.Y = torch.tensor(np.asarray(Y), dtype=torch.float32)
+
+    def __len__(self):
+        return self.X.shape[0]
+
+    def __getitem__(self, idx):
+        return self.X[idx], self.Y[idx]
+
+    @classmethod
+    def from_group(
+        cls,
         template: np.ndarray,
         k: int,
         group,
         mode: str = "sampled",
         num_samples: int = 65536,
         return_all_outputs: bool = False,
-    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    ) -> tuple["OfflineModularCompositionDataset", np.ndarray]:
         """Build generic group composition dataset for sequence length k.
 
         Works with any escnn group that has a regular representation.
-        For a sequence of k group elements (g1, g2, ..., gk), we compute:
-        - X[i, t, :] = regular_rep(g_t) @ template
-        - Y[i, :]    = regular_rep(g1 * g2 * ... * gk) @ template
 
         Parameters
         ----------
         template : np.ndarray, shape (group_order,)
-            Template array.
         k : int
             Sequence length (number of group elements to compose).
         group : escnn group object
-            Any group with a ``"regular"`` representation.
         mode : str
             ``"sampled"`` or ``"exhaustive"``.
         num_samples : int
@@ -374,8 +269,7 @@ class OfflineModularCompositionDataset:
 
         Returns
         -------
-        X : np.ndarray, shape (N, k, group_order)
-        Y : np.ndarray, shape (N, group_order) or (N, k-1, group_order)
+        dataset : OfflineModularCompositionDataset
         sequence : np.ndarray, shape (N, k)
             Integer indices of group elements per token.
         """
@@ -423,110 +317,154 @@ class OfflineModularCompositionDataset:
         else:
             Y = Y[:, 1:, :]
 
-        return X, Y, sequence
+        return cls(X, Y), sequence
 
-    @staticmethod
-    def cn_dataset(template):
-        """Generate exhaustive k=2 dataset for cyclic group C_n.
+    @classmethod
+    def from_cn(
+        cls,
+        p: int,
+        template: np.ndarray,
+        k: int,
+        mode: str = "sampled",
+        num_samples: int = 65536,
+        return_all_outputs: bool = False,
+    ) -> tuple["OfflineModularCompositionDataset", np.ndarray]:
+        """Build dataset for cyclic group C_p via 1D ``np.roll``.
 
-        Uses ``np.roll`` (no escnn group object required).
+        No escnn group object required.
 
         Parameters
         ----------
-        template : np.ndarray, shape (n,)
+        p : int
+            Order of the cyclic group.
+        template : np.ndarray, shape (p,)
+        k : int
+            Sequence length (number of group elements to compose).
+        mode : str
+            ``"sampled"`` or ``"exhaustive"``.
+        num_samples : int
+            Number of samples when ``mode="sampled"``.
+        return_all_outputs : bool
+            If True, return intermediate composition outputs.
 
         Returns
         -------
-        X : np.ndarray, shape (n**2, 2, n)
-        Y : np.ndarray, shape (n**2, n)
+        dataset : OfflineModularCompositionDataset
+        sequence : np.ndarray, shape (N, k)
+            Integer shifts per token.
         """
-        group_size = len(template)
-        X = np.zeros((group_size * group_size, 2, group_size))
-        Y = np.zeros((group_size * group_size, group_size))
+        assert template.shape == (p,), f"template must be ({p},), got {template.shape}"
 
-        idx = 0
-        for a in range(group_size):
-            for b in range(group_size):
-                q = (a + b) % group_size
-                X[idx, 0, :] = np.roll(template, a)
-                X[idx, 1, :] = np.roll(template, b)
-                Y[idx, :] = np.roll(template, q)
-                idx += 1
+        if mode == "exhaustive":
+            total = p**k
+            if total > 1_000_000:
+                raise ValueError(f"p^k = {total} is huge; use mode='sampled' instead.")
+            N = total
+            sequence = np.zeros((N, k), dtype=np.int64)
+            for idx in range(N):
+                for t in range(k):
+                    sequence[idx, t] = (idx // (p**t)) % p
+        else:
+            N = int(num_samples)
+            sequence = np.random.randint(0, p, size=(N, k), dtype=np.int64)
 
-        return X, Y
+        X = np.zeros((N, k, p), dtype=np.float32)
+        Y = np.zeros((N, k, p), dtype=np.float32)
 
-    @staticmethod
-    def cnxcn_dataset(template):
-        r"""Generate exhaustive k=2 dataset for product group C_n x C_n.
+        for i in range(N):
+            cumsum = 0
+            for t in range(k):
+                shift = int(sequence[i, t])
+                X[i, t, :] = np.roll(template, shift)
+                cumsum = (cumsum + shift) % p
+                Y[i, t, :] = np.roll(template, cumsum)
 
-        Uses 2D ``np.roll`` (no escnn group object required).
+        if not return_all_outputs:
+            Y = Y[:, -1, :]
+        else:
+            Y = Y[:, 1:, :]
+
+        return cls(X, Y), sequence
+
+    @classmethod
+    def from_cnxcn(
+        cls,
+        p1: int,
+        p2: int,
+        template: np.ndarray,
+        k: int,
+        mode: str = "sampled",
+        num_samples: int = 65536,
+        return_all_outputs: bool = False,
+    ) -> tuple["OfflineModularCompositionDataset", np.ndarray]:
+        r"""Build dataset for product group C_{p1} x C_{p2} via 2D ``np.roll``.
+
+        No escnn group object required.
 
         Parameters
         ----------
-        template : np.ndarray, shape (n, n)
+        p1 : int
+            Height (rows) dimension.
+        p2 : int
+            Width (cols) dimension.
+        template : np.ndarray, shape (p1, p2)
             2D template image.
+        k : int
+            Sequence length (number of group elements to compose).
+        mode : str
+            ``"sampled"`` or ``"exhaustive"``.
+        num_samples : int
+            Number of samples when ``mode="sampled"``.
+        return_all_outputs : bool
+            If True, return intermediate composition outputs.
 
         Returns
         -------
-        X : np.ndarray, shape (n**4, 2, n*n)
-        Y : np.ndarray, shape (n**4, n*n)
+        dataset : OfflineModularCompositionDataset
+        sequence_xy : np.ndarray, shape (N, k, 2)
+            Integer shifts (ax, ay) per token.
         """
-        image_length, _ = template.shape
-        X = np.zeros((image_length**4, 2, image_length * image_length))
-        Y = np.zeros((image_length**4, image_length * image_length))
+        assert template.shape == (p1, p2), (
+            f"template must be ({p1}, {p2}), got {template.shape}"
+        )
+        p_flat = p1 * p2
 
-        idx = 0
-        for a_x in range(image_length):
-            for a_y in range(image_length):
-                for b_x in range(image_length):
-                    for b_y in range(image_length):
-                        q_x = (a_x + b_x) % image_length
-                        q_y = (a_y + b_y) % image_length
-                        X[idx, 0, :] = np.roll(
-                            np.roll(template, a_x, axis=0), a_y, axis=1
-                        ).flatten()
-                        X[idx, 1, :] = np.roll(
-                            np.roll(template, b_x, axis=0), b_y, axis=1
-                        ).flatten()
-                        Y[idx, :] = np.roll(
-                            np.roll(template, q_x, axis=0), q_y, axis=1
-                        ).flatten()
-                        idx += 1
+        if mode == "exhaustive":
+            total = p_flat**k
+            if total > 1_000_000:
+                raise ValueError(
+                    f"(p1*p2)**k = {total} is huge; use mode='sampled' instead."
+                )
+            N = total
+            sequence_xy = np.zeros((N, k, 2), dtype=np.int64)
+            for idx in range(N):
+                for t in range(k):
+                    flat_idx = (idx // (p_flat**t)) % p_flat
+                    sequence_xy[idx, t, 0] = flat_idx // p2
+                    sequence_xy[idx, t, 1] = flat_idx % p2
+        else:
+            N = int(num_samples)
+            sequence_xy = np.empty((N, k, 2), dtype=np.int64)
+            sequence_xy[:, :, 0] = np.random.randint(0, p1, size=(N, k))
+            sequence_xy[:, :, 1] = np.random.randint(0, p2, size=(N, k))
 
-        return X, Y
+        X = np.zeros((N, k, p_flat), dtype=np.float32)
+        Y = np.zeros((N, k, p_flat), dtype=np.float32)
 
-    @staticmethod
-    def to_device_and_flatten(X, Y, device=None):
-        """Flatten X from (N, 2, d) to (N, 2*d), convert to tensors, move to device.
+        for i in range(N):
+            sx, sy = 0, 0
+            for t in range(k):
+                ax = int(sequence_xy[i, t, 0])
+                ay = int(sequence_xy[i, t, 1])
+                rolled = np.roll(np.roll(template, shift=ax, axis=0), shift=ay, axis=1)
+                X[i, t, :] = rolled.ravel()
+                sx = (sx + ax) % p1
+                sy = (sy + ay) % p2
+                Y[i, t, :] = np.roll(
+                    np.roll(template, shift=sx, axis=0), shift=sy, axis=1
+                ).ravel()
 
-        Parameters
-        ----------
-        X : np.ndarray, shape (N, 2, d)
-        Y : np.ndarray, shape (N, d)
-        device : torch.device or str, optional
-            If None, auto-detects CUDA availability.
+        if not return_all_outputs:
+            Y = Y[:, -1, :]
 
-        Returns
-        -------
-        X_tensor : torch.Tensor, shape (N, 2*d)
-        Y_tensor : torch.Tensor, shape (N, d)
-        device : torch.device
-        """
-        num_data_features = len(X[0][0])
-        X_flat = X.reshape(X.shape[0], 2 * num_data_features)
-        Y_flat = Y.reshape(Y.shape[0], num_data_features)
-        X_tensor = torch.tensor(X_flat, dtype=torch.float32)
-        Y_tensor = torch.tensor(Y_flat, dtype=torch.float32)
-
-        if device is None:
-            if torch.cuda.is_available():
-                device = torch.device("cuda")
-                print("GPU is available. Using CUDA.")
-            else:
-                device = torch.device("cpu")
-                print("GPU is not available. Using CPU.")
-
-        X_tensor = X_tensor.to(device)
-        Y_tensor = Y_tensor.to(device)
-
-        return X_tensor, Y_tensor, device
+        return cls(X, Y), sequence_xy

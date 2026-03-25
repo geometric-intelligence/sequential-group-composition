@@ -165,7 +165,7 @@ def produce_plots_2d(
 
     ### ----- GENERATE EVALUATION DATA ----- ###
     print("Generating evaluation data for visualization...")
-    X_seq_2d, Y_seq_2d, _ = dataset.OnlineModularAdditionDataset2D.generate_dataset(
+    eval_ds_2d, _ = dataset.OfflineModularCompositionDataset.from_cnxcn(
         config["data"]["p1"],
         config["data"]["p2"],
         template_2d,
@@ -174,9 +174,9 @@ def produce_plots_2d(
         num_samples=min(config["data"]["num_samples"], 1000),
         return_all_outputs=config["model"]["return_all_outputs"],
     )
-    X_seq_2d_t = torch.tensor(X_seq_2d, dtype=torch.float32, device=device)
-    Y_seq_2d_t = torch.tensor(Y_seq_2d, dtype=torch.float32, device=device)
-    print(f"  Generated {X_seq_2d_t.shape[0]} samples for visualization")
+    X_seq_2d_t = eval_ds_2d.X.to(device)
+    Y_seq_2d_t = eval_ds_2d.Y.to(device)
+    print(f"  Generated {len(eval_ds_2d)} samples for visualization")
 
     ### ----- COMPUTE CHECKPOINT INDICES ----- ###
     total_checkpoints = len(param_hist)
@@ -333,13 +333,15 @@ def produce_plots_1d(
     print("Generating evaluation data for visualization...")
 
     if use_group_style:
-        X_raw, Y_raw = dataset.OfflineModularCompositionDataset.cn_dataset(template_1d)
-        X_eval_t, Y_eval_t, device = dataset.OfflineModularCompositionDataset.to_device_and_flatten(
-            X_raw, Y_raw, device=device
+        eval_ds, _ = dataset.OfflineModularCompositionDataset.from_cn(
+            config["data"]["p"], template_1d, k=2, mode="exhaustive",
         )
-        print(f"  Generated {X_eval_t.shape[0]} samples for visualization")
+        N_eval = len(eval_ds)
+        X_eval_t = eval_ds.X.reshape(N_eval, -1).to(device)
+        Y_eval_t = eval_ds.Y.to(device)
+        print(f"  Generated {N_eval} samples for visualization")
     else:
-        X_seq_1d, Y_seq_1d, _ = dataset.OnlineModularAdditionDataset1D.generate_dataset(
+        eval_ds_1d, _ = dataset.OfflineModularCompositionDataset.from_cn(
             config["data"]["p"],
             template_1d,
             config["data"]["k"],
@@ -347,9 +349,9 @@ def produce_plots_1d(
             num_samples=min(config["data"]["num_samples"], 1000),
             return_all_outputs=config["model"]["return_all_outputs"],
         )
-        X_seq_1d_t = torch.tensor(X_seq_1d, dtype=torch.float32, device=device)
-        Y_seq_1d_t = torch.tensor(Y_seq_1d, dtype=torch.float32, device=device)
-        print(f"  Generated {X_seq_1d_t.shape[0]} samples for visualization")
+        X_seq_1d_t = eval_ds_1d.X.to(device)
+        Y_seq_1d_t = eval_ds_1d.Y.to(device)
+        print(f"  Generated {len(eval_ds_1d)} samples for visualization")
 
     ### ----- COMPUTE CHECKPOINT INDICES ----- ###
     total_checkpoints = len(param_hist)
@@ -546,12 +548,12 @@ def produce_plots_group(
 
     if model_type == "TwoLayerNet":
         # TwoLayerNet expects flattened binary pair input: (N, 2*group_size)
-        X_raw, Y_raw, _ = dataset.OfflineModularCompositionDataset.group_dataset(
+        eval_ds, _ = dataset.OfflineModularCompositionDataset.from_group(
             template, k=2, group=group, mode="exhaustive",
         )
-        N_eval = X_raw.shape[0]
-        X_eval_t = torch.tensor(X_raw.reshape(N_eval, -1), dtype=torch.float32, device=device)
-        Y_eval_t = torch.tensor(Y_raw, dtype=torch.float32, device=device)
+        N_eval = len(eval_ds)
+        X_eval_t = eval_ds.X.reshape(N_eval, -1).to(device)
+        Y_eval_t = eval_ds.Y.to(device)
         # Optionally subsample for visualization
         n_eval = min(len(X_eval_t), 1000)
         if n_eval < len(X_eval_t):
@@ -560,7 +562,7 @@ def produce_plots_group(
             Y_eval_t = Y_eval_t[indices]
     else:
         # Sequence models use the generic sequence dataset
-        X_eval, Y_eval, _ = dataset.OfflineModularCompositionDataset.group_dataset(
+        eval_ds, _ = dataset.OfflineModularCompositionDataset.from_group(
             template,
             k,
             group=group,
@@ -568,8 +570,8 @@ def produce_plots_group(
             num_samples=min(config["data"]["num_samples"], 1000),
             return_all_outputs=config["model"]["return_all_outputs"],
         )
-        X_eval_t = torch.tensor(X_eval, dtype=torch.float32, device=device)
-        Y_eval_t = torch.tensor(Y_eval, dtype=torch.float32, device=device)
+        X_eval_t = eval_ds.X.to(device)
+        Y_eval_t = eval_ds.Y.to(device)
 
     print(f"  Generated {X_eval_t.shape[0]} samples for visualization")
 
@@ -1045,22 +1047,26 @@ def train_single_run(config: dict, run_dir: Path = None) -> dict:
         from torch.utils.data import TensorDataset
 
         if model_type == "TwoLayerNet":
-            # TwoLayerNet uses binary pair datasets from src/datamodule.py
-            # Data shape: X=(N, 2, group_size) -> flattened to (N, 2*group_size), Y=(N, group_size)
+            # TwoLayerNet: X=(N, k, group_size) -> flattened to (N, k*group_size)
             if group_name == "cn":
-                X_raw, Y_raw = dataset.OfflineModularCompositionDataset.cn_dataset(tpl)
+                pair_ds, _ = dataset.OfflineModularCompositionDataset.from_cn(
+                    config["data"]["p"], tpl, k=config["data"]["k"], mode="exhaustive",
+                )
             elif group_name == "cnxcn":
-                X_raw, Y_raw = dataset.OfflineModularCompositionDataset.cnxcn_dataset(tpl)
+                pair_ds, _ = dataset.OfflineModularCompositionDataset.from_cnxcn(
+                    config["data"]["p1"], config["data"]["p2"], tpl,
+                    k=config["data"]["k"], mode="exhaustive",
+                )
             elif group_name in ("dihedral", "octahedral", "A5"):
-                X_raw, Y_raw, _ = dataset.OfflineModularCompositionDataset.group_dataset(
+                pair_ds, _ = dataset.OfflineModularCompositionDataset.from_group(
                     tpl, k=config["data"]["k"], group=group, mode="exhaustive",
                 )
             else:
                 raise ValueError(f"Unsupported group_name for TwoLayerNet: {group_name}")
 
-            X_all, Y_all, device = dataset.OfflineModularCompositionDataset.to_device_and_flatten(
-                X_raw, Y_raw, device=device
-            )
+            N_all = len(pair_ds)
+            X_all = pair_ds.X.reshape(N_all, -1).to(device)
+            Y_all = pair_ds.Y.to(device)
 
             # Apply dataset_fraction if configured
             dataset_fraction = config["data"].get("dataset_fraction", 1.0)
@@ -1081,8 +1087,7 @@ def train_single_run(config: dict, run_dir: Path = None) -> dict:
         else:
             # Sequence models (QuadraticRNN, SequentialMLP) use sequence datasets
             if group_name == "cn":
-                # Generate training dataset
-                X_train, Y_train, _ = dataset.OnlineModularAdditionDataset1D.generate_dataset(
+                train_ds, _ = dataset.OfflineModularCompositionDataset.from_cn(
                     config["data"]["p"],
                     template_1d,
                     config["data"]["k"],
@@ -1091,9 +1096,8 @@ def train_single_run(config: dict, run_dir: Path = None) -> dict:
                     return_all_outputs=config["model"]["return_all_outputs"],
                 )
 
-                # Generate validation dataset
                 val_samples = max(1000, config["data"]["num_samples"] // 10)
-                X_val, Y_val, _ = dataset.OnlineModularAdditionDataset1D.generate_dataset(
+                val_ds, _ = dataset.OfflineModularCompositionDataset.from_cn(
                     config["data"]["p"],
                     template_1d,
                     config["data"]["k"],
@@ -1102,8 +1106,7 @@ def train_single_run(config: dict, run_dir: Path = None) -> dict:
                     return_all_outputs=config["model"]["return_all_outputs"],
                 )
             elif group_name == "cnxcn":
-                # Generate training dataset
-                X_train, Y_train, _ = dataset.OnlineModularAdditionDataset2D.generate_dataset(
+                train_ds, _ = dataset.OfflineModularCompositionDataset.from_cnxcn(
                     config["data"]["p1"],
                     config["data"]["p2"],
                     template_2d,
@@ -1113,9 +1116,8 @@ def train_single_run(config: dict, run_dir: Path = None) -> dict:
                     return_all_outputs=config["model"]["return_all_outputs"],
                 )
 
-                # Generate validation dataset
                 val_samples = max(1000, config["data"]["num_samples"] // 10)
-                X_val, Y_val, _ = dataset.OnlineModularAdditionDataset2D.generate_dataset(
+                val_ds, _ = dataset.OfflineModularCompositionDataset.from_cnxcn(
                     config["data"]["p1"],
                     config["data"]["p2"],
                     template_2d,
@@ -1125,7 +1127,7 @@ def train_single_run(config: dict, run_dir: Path = None) -> dict:
                     return_all_outputs=config["model"]["return_all_outputs"],
                 )
             elif group_name in ("dihedral", "octahedral", "A5"):
-                X_train, Y_train, _ = dataset.OfflineModularCompositionDataset.group_dataset(
+                train_ds, _ = dataset.OfflineModularCompositionDataset.from_group(
                     tpl,
                     config["data"]["k"],
                     group=group,
@@ -1135,7 +1137,7 @@ def train_single_run(config: dict, run_dir: Path = None) -> dict:
                 )
 
                 val_samples = max(1000, config["data"]["num_samples"] // 10)
-                X_val, Y_val, _ = dataset.OfflineModularCompositionDataset.group_dataset(
+                val_ds, _ = dataset.OfflineModularCompositionDataset.from_group(
                     tpl,
                     config["data"]["k"],
                     group=group,
@@ -1148,10 +1150,10 @@ def train_single_run(config: dict, run_dir: Path = None) -> dict:
                     f"group_name must be 'cn', 'cnxcn', 'dihedral', 'octahedral', or 'A5', got {group_name}"
                 )
 
-            X_train_t = torch.tensor(X_train, dtype=torch.float32, device=device)
-            Y_train_t = torch.tensor(Y_train, dtype=torch.float32, device=device)
-            X_val_t = torch.tensor(X_val, dtype=torch.float32, device=device)
-            Y_val_t = torch.tensor(Y_val, dtype=torch.float32, device=device)
+            X_train_t = train_ds.X.to(device)
+            Y_train_t = train_ds.Y.to(device)
+            X_val_t = val_ds.X.to(device)
+            Y_val_t = val_ds.Y.to(device)
 
         train_dataset = TensorDataset(X_train_t, Y_train_t)
         val_dataset = TensorDataset(X_val_t, Y_val_t)
