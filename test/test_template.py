@@ -111,33 +111,33 @@ class TestFixedGroup:
         """Test that output shape matches group order."""
         group_order = dihedral_group.order()
         num_irreps = len(list(dihedral_group.irreps()))
-        fourier_coef_diag_values = [1.0] * num_irreps
+        powers = [1.0] * num_irreps
 
-        tpl = template.fixed_group(dihedral_group, fourier_coef_diag_values)
+        tpl = template.fixed_group(dihedral_group, powers)
 
         assert tpl.shape == (group_order,), f"Expected shape ({group_order},), got {tpl.shape}"
 
     def test_mean_centered(self, dihedral_group):
         """Test that the template is mean-centered."""
         num_irreps = len(list(dihedral_group.irreps()))
-        fourier_coef_diag_values = [1.0] * num_irreps
+        powers = [1.0] * num_irreps
 
-        tpl = template.fixed_group(dihedral_group, fourier_coef_diag_values)
+        tpl = template.fixed_group(dihedral_group, powers)
 
         np.testing.assert_allclose(tpl.mean(), 0, atol=1e-10)
 
-    def test_wrong_num_coefs_error(self, dihedral_group):
-        """Test that mismatched number of coefficients raises error."""
-        wrong_num_coefs = [1.0, 2.0]
+    def test_wrong_num_powers_error(self, dihedral_group):
+        """Test that mismatched number of powers raises error."""
+        wrong_num_powers = [1.0, 2.0]
 
         with pytest.raises(AssertionError):
-            template.fixed_group(dihedral_group, wrong_num_coefs)
+            template.fixed_group(dihedral_group, wrong_num_powers)
 
     def test_real_valued(self, dihedral_group):
         """Test that the template is real-valued."""
         num_irreps = len(list(dihedral_group.irreps()))
-        fourier_coef_diag_values = [1.0] * num_irreps
+        powers = [1.0] * num_irreps
 
-        tpl = template.fixed_group(dihedral_group, fourier_coef_diag_values)
+        tpl = template.fixed_group(dihedral_group, powers)
 
         assert np.isreal(tpl).all()

@@ -715,7 +715,7 @@ def train_single_run(config: dict, run_dir: Path = None) -> dict:
 
         if template_type == "mnist":
             template_1d = template.mnist_1d(p, config["data"]["mnist_label"], root="data")
-        # TODO: remove fourier in favor of custom_fourier for cn, using fixed_cn function.
+        # TODO: remove fourier in favor of custom_fourier for cn, which uses fixed_cn function.
         elif template_type == "fourier":
             n_freqs = config["data"]["n_freqs"]
             template_1d = template.fourier_1d(p, n_freqs=n_freqs, seed=config["data"]["seed"])
@@ -817,36 +817,9 @@ def train_single_run(config: dict, run_dir: Path = None) -> dict:
 
         elif template_type == "custom_fourier":
             powers = config["data"]["powers"]
-            irreps = group.irreps()
-            irrep_dims = [ir.size for ir in irreps]
-
-            assert len(powers) == len(irreps), (
-                f"powers must have {len(irreps)} values (one per irrep), got {len(powers)}"
-            )
-
-            fourier_coef_diag_values = [
-                np.sqrt(group_order * p / dim**2) if p > 0 else 0.0
-                for p, dim in zip(powers, irrep_dims)
-            ]
-
             print("Template type: custom_fourier")
             print(f"Desired powers (per irrep): {powers}")
-            print(f"Fourier coef diagonal values: {fourier_coef_diag_values}")
-
-            spectrum = []
-            for i, irrep in enumerate(irreps):
-                diag_val = fourier_coef_diag_values[i]
-                diag_values = np.full(irrep.size, diag_val, dtype=float)
-                mat = np.zeros((irrep.size, irrep.size), dtype=float)
-                np.fill_diagonal(mat, diag_values)
-                print(
-                    f"  Irrep {i} (dim={irrep.size}): diag_value = {diag_val:.4f} -> power = {powers[i]}"
-                )
-                spectrum.append(mat)
-
-            tpl = fourier.group_fourier_inverse(group, spectrum)
-            tpl = tpl - np.mean(tpl)
-            tpl = tpl.astype(np.float32)
+            tpl = template.fixed_group(group, powers)
         else:
             raise ValueError(
                 f"Unknown template_type for {group_name}: {template_type}. "

@@ -11,7 +11,7 @@ import src.fourier as fourier
 
 
 def one_hot(p):
-    """One-hot encode an integer value in R^p."""
+    """One-hot, with 0th frequency removed (!) encoding of an integer value in R^p."""
     vec = np.zeros(p)
     vec[1] = 10
 
@@ -103,37 +103,49 @@ def fixed_cnxcn(image_length, fourier_coef_mags):
     return template
 
 
-def fixed_group(group, fourier_coef_diag_values):
-    """Generate a fixed template for a group with non-zero Fourier coefficients for specific irreps.
+def fixed_group(group, powers):
+    """Generate a template for a group from desired per-irrep power values.
+
+    Each entry in *powers* specifies the desired spectral power for the
+    corresponding irrep.  The function converts these to Fourier coefficient
+    diagonal values, builds the spectrum, and returns the mean-centered
+    template.
 
     Parameters
     ----------
     group : Group (escnn object)
         The group.
-    fourier_coef_diag_values : list of float
-        Diagonal values for each irrep's Fourier coefficient matrix.
+    powers : list of float
+        Desired spectral power for each irrep (one entry per irrep).
 
     Returns
     -------
-    template : np.ndarray, shape=[group.order()]
-        The mean centered template.
+    template : np.ndarray, shape (group.order(),), dtype float32
+        The mean-centered template.
     """
-    spectrum = []
-    assert len(fourier_coef_diag_values) == len(group.irreps()), (
-        f"Number of Fourier coef. magnitudes on the diagonal {len(fourier_coef_diag_values)} must match number of irreps {len(group.irreps())}"
-    )
-    for i, irrep in enumerate(group.irreps()):
-        diag_values = np.full(irrep.size, fourier_coef_diag_values[i], dtype=float)
-        mat = np.zeros((irrep.size, irrep.size), dtype=float)
-        np.fill_diagonal(mat, diag_values)
-        print(f"mat for irrep {i} of dimension {irrep.size} is:\n {mat}\n")
+    group_order = group.order()
+    irreps = group.irreps()
+    irrep_dims = [ir.size for ir in irreps]
 
+    assert len(powers) == len(irreps), (
+        f"powers must have {len(irreps)} values (one per irrep), got {len(powers)}"
+    )
+
+    fourier_coef_diag_values = [
+        np.sqrt(group_order * p / dim**2) if p > 0 else 0.0
+        for p, dim in zip(powers, irrep_dims)
+    ]
+
+    spectrum = []
+    for i, irrep in enumerate(irreps):
+        diag_val = fourier_coef_diag_values[i]
+        mat = np.zeros((irrep.size, irrep.size), dtype=float)
+        np.fill_diagonal(mat, np.full(irrep.size, diag_val, dtype=float))
         spectrum.append(mat)
 
     template = fourier.group_fourier_inverse(group, spectrum)
-
-    zeroth_freq = np.mean(template)
-    template = template - zeroth_freq
+    template = template - np.mean(template)
+    template = template.astype(np.float32)
 
     return template
 
@@ -195,7 +207,7 @@ def template_selector(config):
         elif config["group_name"] == "cn":
             template = fixed_cn(config["group_n"], config["fourier_coef_diag_values"])
         else:
-            template = fixed_group(config["group"], config["fourier_coef_diag_values"])
+            template = fixed_group(config["group"], config["powers"])
     elif config["template_type"] == "one_hot":
         template = one_hot(config["group_size"])
     else:
