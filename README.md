@@ -63,7 +63,7 @@ poetry install
 Train a model on a specific group:
 
 ```bash
-python src/main.py --config src/config_d5.yaml
+python src/main.py --config src/configs/config_d5.yaml
 ```
 
 Results (loss curves, predictions, power spectra) are saved to a timestamped directory under `runs/`.
@@ -74,12 +74,12 @@ The repository includes preconfigured experiments for six groups:
 
 | Group | Config | Order | Architecture |
 |:------|:-------|:-----:|:-------------|
-| Cyclic $C_{10}$ | `src/config_c10_k3.yaml` | 10 | SequentialMLP |
-| Product $C_4 \times C_4$ | `src/config_c4x4_k3.yaml` | 16 | SequentialMLP |
-| Dihedral $D_3$ | `src/config_d3.yaml` | 6 | TwoLayerNet |
-| Dihedral $D_5$ | `src/config_d5.yaml` | 10 | TwoLayerNet |
-| Octahedral $O_h$ | `src/config_oh.yaml` | 24 | TwoLayerNet |
-| Icosahedral $A_5$ | `src/config_a5.yaml` | 60 | TwoLayerNet |
+| Cyclic $C_{10}$ | `src/configs/config_c10_k3.yaml` | 10 | SequentialMLP |
+| Product $C_4 \times C_4$ | `src/configs/config_c4x4_k3.yaml` | 16 | SequentialMLP |
+| Dihedral $D_3$ | `src/configs/config_d3.yaml` | 6 | TwoLayerNet |
+| Dihedral $D_5$ | `src/configs/config_d5.yaml` | 10 | TwoLayerNet |
+| Octahedral $O_h$ | `src/configs/config_oh.yaml` | 24 | TwoLayerNet |
+| Icosahedral $A_5$ | `src/configs/config_a5.yaml` | 60 | TwoLayerNet |
 
 ### Parameter Sweeps
 
@@ -158,7 +158,8 @@ group-agf/
 │   ├── viz.py                    # Plotting and visualization
 │   ├── train.py                  # Training loops (offline and online)
 │   ├── run_sweep.py              # Parameter sweep runner
-│   └── config_*.yaml             # Group-specific configurations
+├── configs/                      # Configs
+│   ├── config_*.yaml             # Group-specific configurations
 ├── test/                         # Unit and integration tests
 ├── notebooks/                    # Jupyter notebooks for exploration
 ├── pyproject.toml                # Project metadata and dependencies
