@@ -439,21 +439,21 @@ def produce_plots_1d(
             hidden_dim=config["model"]["hidden_dim"],
         )
     else:
-            viz.plot_power_1d(
-                model,
-                param_hist,
-                X_seq_1d_t,
-                Y_seq_1d_t,
-                template_1d,
-                p,
-                loss_history=train_loss_hist,
-                param_save_indices=param_save_indices,
-                num_freqs_to_track=min(10, p // 4),
-                checkpoint_indices=checkpoint_indices,
-                num_samples=100,
-                save_path=os.path.join(run_dir, "power_spectrum_analysis.pdf"),
-                show=False,
-            )
+        viz.plot_power_1d(
+            model,
+            param_hist,
+            X_seq_1d_t,
+            Y_seq_1d_t,
+            template_1d,
+            p,
+            loss_history=train_loss_hist,
+            param_save_indices=param_save_indices,
+            num_freqs_to_track=min(10, p // 4),
+            checkpoint_indices=checkpoint_indices,
+            num_samples=100,
+            save_path=os.path.join(run_dir, "power_spectrum_analysis.pdf"),
+            show=False,
+        )
 
     print(f"\n✓ All C{p} plots generated successfully!")
 
@@ -605,9 +605,9 @@ def produce_plots_group(
     hidden_dim = config["model"]["hidden_dim"]
     init_scale = config["model"]["init_scale"]
     plt.suptitle(
-    f"{group_label} Composition (k={k}, lr={lr}, h={hidden_dim}, init={init_scale:.0e})",
-    fontsize=14,
-)
+        f"{group_label} Composition (k={k}, lr={lr}, h={hidden_dim}, init={init_scale:.0e})",
+        fontsize=14,
+    )
     plt.tight_layout()
     training_loss_path = os.path.join(run_dir, "training_loss.pdf")
     plt.savefig(training_loss_path, bbox_inches="tight", dpi=150)
@@ -647,8 +647,8 @@ def produce_plots_group(
             save_path=os.path.join(run_dir, "power_spectrum_analysis.pdf"),
             group_label=group_label,
             learning_rate=config["training"]["learning_rate"],
-        hidden_dim=config["model"]["hidden_dim"],
-    )
+            hidden_dim=config["model"]["hidden_dim"],
+        )
         print(f"  ✓ Saved {os.path.join(run_dir, 'power_spectrum_analysis.pdf')}")
 
     print(f"\n✓ All {group_label} plots generated successfully!")

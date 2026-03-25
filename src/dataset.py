@@ -152,9 +152,7 @@ class OnlineModularAdditionDataset2D(IterableDataset):
         if mode == "exhaustive":
             total = (p1 * p2) ** k
             if total > 1_000_000:
-                raise ValueError(
-                    f"(p1*p2)**k = {total} is huge; use mode='sampled' instead."
-                )
+                raise ValueError(f"(p1*p2)**k = {total} is huge; use mode='sampled' instead.")
             N = total
             sequence_xy = np.zeros((N, k, 2), dtype=np.int64)
             for idx in range(N):
@@ -181,9 +179,7 @@ class OnlineModularAdditionDataset2D(IterableDataset):
                 X[i, t, :] = rolled.ravel()
                 sx = (sx + ax) % p1
                 sy = (sy + ay) % p2
-                Y[i, t, :] = np.roll(
-                    np.roll(template, shift=sx, axis=0), shift=sy, axis=1
-                ).ravel()
+                Y[i, t, :] = np.roll(np.roll(template, shift=sx, axis=0), shift=sy, axis=1).ravel()
 
         if not return_all_outputs:
             Y = Y[:, -1, :]

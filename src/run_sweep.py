@@ -198,7 +198,7 @@ def generate_experiment_configs(sweep_config: dict) -> list[tuple[str, dict]]:
             base_scale = cfg["model"]["init_scale"]
             adjusted = base_scale ** (3.0 / (k + 1))
             cfg["model"]["init_scale"] = adjusted
-        print(f"Adjusted init_scale per k: init_scale_k = base^(3/(k+1))")
+        print("Adjusted init_scale per k: init_scale_k = base^(3/(k+1))")
 
     # Validate: Check for duplicate experiment names
     exp_names = [name for name, _ in experiment_configs]

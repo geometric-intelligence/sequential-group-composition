@@ -165,9 +165,7 @@ def export_lightweight_data(
 
     for k in k_values:
         for metric in ("final_loss", "initial_loss"):
-            grid, _ = load_sweep_results_grid(
-                sweep_dir, k, p_values, hidden_dims, metric=metric
-            )
+            grid, _ = load_sweep_results_grid(sweep_dir, k, p_values, hidden_dims, metric=metric)
             out[f"{metric}_k{k}"] = grid.astype(np.float32)
 
         for h in hidden_dims:
@@ -237,7 +235,7 @@ def plot_theory_boundaries(
         else:
             style = dict(color="black", linewidth=2, linestyle="--")
             label = (
-                f"$m=1$: $H$ ≥ $2^{{k-1}} |G|$"
+                "$m=1$: $H$ ≥ $2^{k-1} |G|$"
                 if m == 1
                 else f"$m={m}$: $H$ ≥ ${m} \\cdot 2^{{k-1}} |G|$"
             )
