@@ -410,44 +410,6 @@ def build_modular_addition_sequence_dataset_generic(
     return X, Y, sequence
 
 
-def group_dataset(group, template):
-    """Generate a dataset of group elements acting on the template.
-
-    Using the regular representation.
-
-    Parameters
-    ----------
-    group : Group (escnn object)
-        The group.
-    template : np.ndarray, shape=[group.order()]
-        The template to generate the dataset from.
-
-    Returns
-    -------
-    X : np.ndarray, shape=[group.order()**2, 2, group.order()]
-    Y : np.ndarray, shape=[group.order()**2, group.order()]
-    """
-    group_order = group.order()
-    assert len(template) == group_order, "template must have the same length as the group order"
-    n_samples = group_order**2
-    X = np.zeros((n_samples, 2, group_order))
-    Y = np.zeros((n_samples, group_order))
-    regular_rep = group.representations["regular"]
-
-    idx = 0
-    for g1 in group.elements:
-        for g2 in group.elements:
-            g1_rep = regular_rep(g1)
-            g2_rep = regular_rep(g2)
-            g12_rep = g1_rep @ g2_rep
-
-            X[idx, 0, :] = g1_rep @ template
-            X[idx, 1, :] = g2_rep @ template
-            Y[idx, :] = g12_rep @ template
-            idx += 1
-
-    return X, Y
-
 
 def cn_dataset(template):
     """Generate a dataset for the cyclic group C_n modular addition operation."""

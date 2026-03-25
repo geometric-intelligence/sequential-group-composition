@@ -546,10 +546,12 @@ def produce_plots_group(
 
     if model_type == "TwoLayerNet":
         # TwoLayerNet expects flattened binary pair input: (N, 2*group_size)
-        X_raw, Y_raw = dataset.group_dataset(group, template)
-        X_eval_t, Y_eval_t, device = dataset.move_dataset_to_device_and_flatten(
-            X_raw, Y_raw, device=device
+        X_raw, Y_raw, _ = dataset.build_modular_addition_sequence_dataset_generic(
+            template, k=2, group=group, mode="exhaustive",
         )
+        N_eval = X_raw.shape[0]
+        X_eval_t = torch.tensor(X_raw.reshape(N_eval, -1), dtype=torch.float32, device=device)
+        Y_eval_t = torch.tensor(Y_raw, dtype=torch.float32, device=device)
         # Optionally subsample for visualization
         n_eval = min(len(X_eval_t), 1000)
         if n_eval < len(X_eval_t):
@@ -1048,7 +1050,9 @@ def train_single_run(config: dict, run_dir: Path = None) -> dict:
             elif group_name == "cnxcn":
                 X_raw, Y_raw = dataset.cnxcn_dataset(tpl)
             elif group_name in ("dihedral", "octahedral", "A5"):
-                X_raw, Y_raw = dataset.group_dataset(group, tpl)
+                X_raw, Y_raw, _ = dataset.build_modular_addition_sequence_dataset_generic(
+                    tpl, k=config["data"]["k"], group=group, mode="exhaustive",
+                )
             else:
                 raise ValueError(f"Unsupported group_name for TwoLayerNet: {group_name}")
 

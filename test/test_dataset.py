@@ -344,8 +344,8 @@ class TestCnxcnDataset:
         assert X.shape[0] == expected_n
 
 
-class TestGroupDataset:
-    """Tests for group_dataset function."""
+class TestBuildGenericDatasetForTwoLayerNet:
+    """Tests for build_modular_addition_sequence_dataset_generic with k=2 (TwoLayerNet path)."""
 
     @pytest.fixture
     def dihedral_group(self):
@@ -355,23 +355,41 @@ class TestGroupDataset:
         return DihedralGroup(N=3)
 
     def test_output_shape(self, dihedral_group):
-        """Test that output shapes are correct for D3."""
+        """Test that output shapes are correct for D3 with k=2 exhaustive."""
         group_order = dihedral_group.order()
-        template = np.random.randn(group_order)
+        template = np.random.randn(group_order).astype(np.float32)
 
-        X, Y = dataset.group_dataset(dihedral_group, template)
+        X, Y, seq = dataset.build_modular_addition_sequence_dataset_generic(
+            template, k=2, group=dihedral_group, mode="exhaustive",
+        )
 
         n_samples = group_order**2
         assert X.shape == (n_samples, 2, group_order), f"X shape mismatch: {X.shape}"
         assert Y.shape == (n_samples, group_order), f"Y shape mismatch: {Y.shape}"
+        assert seq.shape == (n_samples, 2), f"seq shape mismatch: {seq.shape}"
+
+    def test_reshape_for_twolayernet(self, dihedral_group):
+        """Test that X can be reshaped to (N, 2*group_order) for TwoLayerNet."""
+        group_order = dihedral_group.order()
+        template = np.random.randn(group_order).astype(np.float32)
+
+        X, Y, _ = dataset.build_modular_addition_sequence_dataset_generic(
+            template, k=2, group=dihedral_group, mode="exhaustive",
+        )
+        N = X.shape[0]
+        X_flat = X.reshape(N, -1)
+
+        assert X_flat.shape == (N, 2 * group_order), f"Flat shape mismatch: {X_flat.shape}"
 
     def test_template_length_mismatch_error(self, dihedral_group):
         """Test that mismatched template length raises error."""
         wrong_size = dihedral_group.order() + 1
-        template = np.random.randn(wrong_size)
+        template = np.random.randn(wrong_size).astype(np.float32)
 
         with pytest.raises(AssertionError):
-            dataset.group_dataset(dihedral_group, template)
+            dataset.build_modular_addition_sequence_dataset_generic(
+                template, k=2, group=dihedral_group, mode="exhaustive",
+            )
 
 
 class TestMoveDatasetToDeviceAndFlatten:
