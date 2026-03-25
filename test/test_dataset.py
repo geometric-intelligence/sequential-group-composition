@@ -7,8 +7,8 @@ import torch
 import src.dataset as dataset
 
 
-class TestBuildModularAdditionSequenceDataset1D:
-    """Tests for OnlineModularAdditionDataset1D.generate_dataset."""
+class TestOnlineModularAdditionDataset1D:
+    """Tests for OnlineModularAdditionDataset1D."""
 
     @pytest.fixture
     def template_1d(self):
@@ -60,7 +60,6 @@ class TestBuildModularAdditionSequenceDataset1D:
             return_all_outputs=True,
         )
 
-        # Y should have k-1 outputs (one after each pair of tokens)
         assert X.shape == (num_samples, k, p)
         assert Y.shape == (num_samples, k - 1, p)
         assert sequence.shape == (num_samples, k)
@@ -79,9 +78,48 @@ class TestBuildModularAdditionSequenceDataset1D:
         expected_x0 = np.roll(template_1d, shift_0)
         np.testing.assert_allclose(X[0, 0, :], expected_x0, rtol=1e-5)
 
+    def test_batch_shape(self):
+        """Test that batches have correct shapes."""
+        p = 7
+        k = 3
+        batch_size = 16
+        template = np.random.randn(p).astype(np.float32)
 
-class TestBuildModularAdditionSequenceDataset2D:
-    """Tests for OnlineModularAdditionDataset2D.generate_dataset."""
+        ds = dataset.OnlineModularAdditionDataset1D(
+            p=p, template=template, k=k, batch_size=batch_size, device="cpu"
+        )
+
+        iterator = iter(ds)
+        X, Y = next(iterator)
+
+        assert X.shape == (batch_size, k, p), f"X shape mismatch: {X.shape}"
+        assert Y.shape == (batch_size, p), f"Y shape mismatch: {Y.shape}"
+
+    def test_batch_shape_return_all_outputs(self):
+        """Test batch shapes with return_all_outputs=True."""
+        p = 7
+        k = 4
+        batch_size = 16
+        template = np.random.randn(p).astype(np.float32)
+
+        ds = dataset.OnlineModularAdditionDataset1D(
+            p=p,
+            template=template,
+            k=k,
+            batch_size=batch_size,
+            device="cpu",
+            return_all_outputs=True,
+        )
+
+        iterator = iter(ds)
+        X, Y = next(iterator)
+
+        assert X.shape == (batch_size, k, p)
+        assert Y.shape == (batch_size, k - 1, p)
+
+
+class TestOnlineModularAdditionDataset2D:
+    """Tests for OnlineModularAdditionDataset2D."""
 
     @pytest.fixture
     def template_2d(self):
@@ -124,120 +162,6 @@ class TestBuildModularAdditionSequenceDataset2D:
         assert X.shape == (expected_n, k, p_flat)
         assert Y.shape == (expected_n, p_flat)
         assert sequence_xy.shape == (expected_n, k, 2)
-
-
-class TestBuildModularAdditionSequenceDatasetGenericD3:
-    """Tests for build_modular_addition_sequence_dataset_generic with DihedralGroup."""
-
-    @pytest.fixture
-    def d3_group(self):
-        """Create a DihedralGroup(N=3) for testing."""
-        from escnn.group import DihedralGroup
-
-        return DihedralGroup(N=3)
-
-    @pytest.fixture
-    def template_d3(self, d3_group):
-        """Create a template for D3 group (order 6)."""
-        group_order = d3_group.order()
-        template = np.random.randn(group_order).astype(np.float32)
-        return template
-
-    def test_output_shape_sampled(self, template_d3, d3_group):
-        """Test output shapes in sampled mode."""
-        k = 3
-        num_samples = 100
-        group_order = len(template_d3)
-
-        X, Y, sequence = dataset.build_modular_addition_sequence_dataset_generic(
-            template=template_d3, k=k, group=d3_group, mode="sampled", num_samples=num_samples
-        )
-
-        assert X.shape == (num_samples, k, group_order), f"X shape mismatch: {X.shape}"
-        assert Y.shape == (num_samples, group_order), f"Y shape mismatch: {Y.shape}"
-        assert sequence.shape == (num_samples, k), f"sequence shape mismatch: {sequence.shape}"
-
-    def test_output_shape_exhaustive(self, template_d3, d3_group):
-        """Test output shapes in exhaustive mode."""
-        k = 2
-        group_order = len(template_d3)
-        n_elements = group_order
-
-        X, Y, sequence = dataset.build_modular_addition_sequence_dataset_generic(
-            template=template_d3, k=k, group=d3_group, mode="exhaustive"
-        )
-
-        expected_n = n_elements**k
-        assert X.shape == (expected_n, k, group_order)
-        assert Y.shape == (expected_n, group_order)
-        assert sequence.shape == (expected_n, k)
-
-    def test_output_shape_return_all_outputs(self, template_d3, d3_group):
-        """Test output shapes with return_all_outputs=True."""
-        k = 4
-        num_samples = 50
-        group_order = len(template_d3)
-
-        X, Y, sequence = dataset.build_modular_addition_sequence_dataset_generic(
-            template=template_d3,
-            k=k,
-            group=d3_group,
-            mode="sampled",
-            num_samples=num_samples,
-            return_all_outputs=True,
-        )
-
-        assert X.shape == (num_samples, k, group_order)
-        assert Y.shape == (num_samples, k - 1, group_order)
-        assert sequence.shape == (num_samples, k)
-
-
-class TestOnlineModularAdditionDataset1D:
-    """Tests for OnlineModularAdditionDataset1D."""
-
-    def test_batch_shape(self):
-        """Test that batches have correct shapes."""
-        p = 7
-        k = 3
-        batch_size = 16
-        template = np.random.randn(p).astype(np.float32)
-
-        ds = dataset.OnlineModularAdditionDataset1D(
-            p=p, template=template, k=k, batch_size=batch_size, device="cpu"
-        )
-
-        # Get first batch
-        iterator = iter(ds)
-        X, Y = next(iterator)
-
-        assert X.shape == (batch_size, k, p), f"X shape mismatch: {X.shape}"
-        assert Y.shape == (batch_size, p), f"Y shape mismatch: {Y.shape}"
-
-    def test_batch_shape_return_all_outputs(self):
-        """Test batch shapes with return_all_outputs=True."""
-        p = 7
-        k = 4
-        batch_size = 16
-        template = np.random.randn(p).astype(np.float32)
-
-        ds = dataset.OnlineModularAdditionDataset1D(
-            p=p,
-            template=template,
-            k=k,
-            batch_size=batch_size,
-            device="cpu",
-            return_all_outputs=True,
-        )
-
-        iterator = iter(ds)
-        X, Y = next(iterator)
-
-        assert X.shape == (batch_size, k, p)
-        assert Y.shape == (batch_size, k - 1, p)
-
-
-class TestOnlineModularAdditionDataset2D:
-    """Tests for OnlineModularAdditionDataset2D."""
 
     def test_batch_shape(self):
         """Test that batches have correct shapes."""
@@ -282,153 +206,140 @@ class TestOnlineModularAdditionDataset2D:
         assert Y.shape == (batch_size, k - 1, p_flat)
 
 
-class TestCnDataset:
-    """Tests for cn_dataset function."""
+class TestOfflineModularCompositionDataset:
+    """Tests for OfflineModularCompositionDataset."""
 
-    def test_output_shape(self):
-        """Test that output shapes are correct."""
+    @pytest.fixture
+    def d3_group(self):
+        """Create a DihedralGroup(N=3) for testing."""
+        from escnn.group import DihedralGroup
+
+        return DihedralGroup(N=3)
+
+    @pytest.fixture
+    def template_d3(self, d3_group):
+        """Create a template for D3 group (order 6)."""
+        group_order = d3_group.order()
+        template = np.random.randn(group_order).astype(np.float32)
+        return template
+
+    def test_output_shape_sampled(self, template_d3, d3_group):
+        """Test output shapes in sampled mode."""
+        k = 3
+        num_samples = 100
+        group_order = len(template_d3)
+
+        X, Y, sequence = dataset.OfflineModularCompositionDataset.group_dataset(
+            template=template_d3, k=k, group=d3_group, mode="sampled", num_samples=num_samples
+        )
+
+        assert X.shape == (num_samples, k, group_order), f"X shape mismatch: {X.shape}"
+        assert Y.shape == (num_samples, group_order), f"Y shape mismatch: {Y.shape}"
+        assert sequence.shape == (num_samples, k), f"sequence shape mismatch: {sequence.shape}"
+
+    def test_output_shape_exhaustive(self, template_d3, d3_group):
+        """Test output shapes in exhaustive mode."""
+        k = 2
+        group_order = len(template_d3)
+        n_elements = group_order
+
+        X, Y, sequence = dataset.OfflineModularCompositionDataset.group_dataset(
+            template=template_d3, k=k, group=d3_group, mode="exhaustive"
+        )
+
+        expected_n = n_elements**k
+        assert X.shape == (expected_n, k, group_order)
+        assert Y.shape == (expected_n, group_order)
+        assert sequence.shape == (expected_n, k)
+
+    def test_output_shape_return_all_outputs(self, template_d3, d3_group):
+        """Test output shapes with return_all_outputs=True."""
+        k = 4
+        num_samples = 50
+        group_order = len(template_d3)
+
+        X, Y, sequence = dataset.OfflineModularCompositionDataset.group_dataset(
+            template=template_d3,
+            k=k,
+            group=d3_group,
+            mode="sampled",
+            num_samples=num_samples,
+            return_all_outputs=True,
+        )
+
+        assert X.shape == (num_samples, k, group_order)
+        assert Y.shape == (num_samples, k - 1, group_order)
+        assert sequence.shape == (num_samples, k)
+
+    def test_template_length_mismatch_error(self, d3_group):
+        """Test that mismatched template length raises error."""
+        wrong_size = d3_group.order() + 1
+        template = np.random.randn(wrong_size).astype(np.float32)
+
+        with pytest.raises(AssertionError):
+            dataset.OfflineModularCompositionDataset.group_dataset(
+                template, k=2, group=d3_group, mode="exhaustive",
+            )
+
+    def test_cn_output_shape(self):
+        """Test that cn_dataset output shapes are correct."""
         group_size = 7
         template = np.random.randn(group_size)
 
-        X, Y = dataset.cn_dataset(template)
+        X, Y = dataset.OfflineModularCompositionDataset.cn_dataset(template)
 
         n_samples = group_size**2
         assert X.shape == (n_samples, 2, group_size), f"X shape mismatch: {X.shape}"
         assert Y.shape == (n_samples, group_size), f"Y shape mismatch: {Y.shape}"
 
-    def test_modular_addition_property(self):
-        """Test that Y is the rolled template by (a+b) mod p."""
+    def test_cn_modular_addition_property(self):
+        """Test that cn_dataset Y is the rolled template by (a+b) mod p."""
         group_size = 5
         template = np.arange(group_size).astype(float)
 
-        X, Y = dataset.cn_dataset(template)
+        X, Y = dataset.OfflineModularCompositionDataset.cn_dataset(template)
 
         # Check a specific case: a=1, b=2 -> q=(1+2)%5=3
         idx = 1 * group_size + 2
         expected_y = np.roll(template, 3)
         np.testing.assert_allclose(Y[idx], expected_y)
 
-    def test_covers_all_pairs(self):
-        """Test that all pairs (a, b) are covered."""
-        group_size = 4
-        template = np.random.randn(group_size)
-
-        X, Y = dataset.cn_dataset(template)
-
-        assert X.shape[0] == group_size**2
-
-
-class TestCnxcnDataset:
-    """Tests for cnxcn_dataset function."""
-
-    def test_output_shape(self):
-        """Test that output shapes are correct."""
+    def test_cnxcn_output_shape(self):
+        """Test that cnxcn_dataset output shapes are correct."""
         image_length = 4
-        template = np.random.randn(image_length * image_length)
+        template = np.random.randn(image_length, image_length)
 
-        X, Y = dataset.cnxcn_dataset(template)
+        X, Y = dataset.OfflineModularCompositionDataset.cnxcn_dataset(template)
 
         n_samples = image_length**4
         n_features = image_length * image_length
         assert X.shape == (n_samples, 2, n_features), f"X shape mismatch: {X.shape}"
         assert Y.shape == (n_samples, n_features), f"Y shape mismatch: {Y.shape}"
 
-    def test_covers_all_combinations(self):
-        """Test that all combinations are covered."""
-        image_length = 3
-        template = np.random.randn(image_length * image_length)
-
-        X, Y = dataset.cnxcn_dataset(template)
-
-        expected_n = image_length**4
-        assert X.shape[0] == expected_n
-
-
-class TestBuildGenericDatasetForTwoLayerNet:
-    """Tests for build_modular_addition_sequence_dataset_generic with k=2 (TwoLayerNet path)."""
-
-    @pytest.fixture
-    def dihedral_group(self):
-        """Create a DihedralGroup for testing."""
-        from escnn.group import DihedralGroup
-
-        return DihedralGroup(N=3)
-
-    def test_output_shape(self, dihedral_group):
-        """Test that output shapes are correct for D3 with k=2 exhaustive."""
-        group_order = dihedral_group.order()
-        template = np.random.randn(group_order).astype(np.float32)
-
-        X, Y, seq = dataset.build_modular_addition_sequence_dataset_generic(
-            template, k=2, group=dihedral_group, mode="exhaustive",
-        )
-
-        n_samples = group_order**2
-        assert X.shape == (n_samples, 2, group_order), f"X shape mismatch: {X.shape}"
-        assert Y.shape == (n_samples, group_order), f"Y shape mismatch: {Y.shape}"
-        assert seq.shape == (n_samples, 2), f"seq shape mismatch: {seq.shape}"
-
-    def test_reshape_for_twolayernet(self, dihedral_group):
-        """Test that X can be reshaped to (N, 2*group_order) for TwoLayerNet."""
-        group_order = dihedral_group.order()
-        template = np.random.randn(group_order).astype(np.float32)
-
-        X, Y, _ = dataset.build_modular_addition_sequence_dataset_generic(
-            template, k=2, group=dihedral_group, mode="exhaustive",
-        )
-        N = X.shape[0]
-        X_flat = X.reshape(N, -1)
-
-        assert X_flat.shape == (N, 2 * group_order), f"Flat shape mismatch: {X_flat.shape}"
-
-    def test_template_length_mismatch_error(self, dihedral_group):
-        """Test that mismatched template length raises error."""
-        wrong_size = dihedral_group.order() + 1
-        template = np.random.randn(wrong_size).astype(np.float32)
-
-        with pytest.raises(AssertionError):
-            dataset.build_modular_addition_sequence_dataset_generic(
-                template, k=2, group=dihedral_group, mode="exhaustive",
-            )
-
-
-class TestMoveDatasetToDeviceAndFlatten:
-    """Tests for move_dataset_to_device_and_flatten function."""
-
-    def test_output_shape_and_type(self):
-        """Test that output shapes and types are correct."""
+    def test_to_device_and_flatten_shape_and_type(self):
+        """Test that to_device_and_flatten output shapes and types are correct."""
         group_size = 5
         n_samples = 10
 
         X = np.random.randn(n_samples, 2, group_size)
         Y = np.random.randn(n_samples, group_size)
 
-        X_tensor, Y_tensor, device = dataset.move_dataset_to_device_and_flatten(X, Y, device="cpu")
+        X_tensor, Y_tensor, device = dataset.OfflineModularCompositionDataset.to_device_and_flatten(X, Y, device="cpu")
 
         assert isinstance(X_tensor, torch.Tensor)
         assert isinstance(Y_tensor, torch.Tensor)
         assert X_tensor.shape == (n_samples, 2 * group_size)
         assert Y_tensor.shape == (n_samples, group_size)
 
-    def test_flattening(self):
-        """Test that X is correctly flattened."""
+    def test_to_device_and_flatten_correctness(self):
+        """Test that to_device_and_flatten correctly flattens X."""
         group_size = 4
         n_samples = 5
 
         X = np.arange(n_samples * 2 * group_size).reshape(n_samples, 2, group_size).astype(float)
         Y = np.random.randn(n_samples, group_size)
 
-        X_tensor, Y_tensor, device = dataset.move_dataset_to_device_and_flatten(X, Y, device="cpu")
+        X_tensor, Y_tensor, device = dataset.OfflineModularCompositionDataset.to_device_and_flatten(X, Y, device="cpu")
 
         expected_flat = np.concatenate([X[0, 0, :], X[0, 1, :]])
         np.testing.assert_allclose(X_tensor[0].numpy(), expected_flat)
-
-    def test_device_cpu(self):
-        """Test explicit CPU device."""
-        X = np.random.randn(5, 2, 4)
-        Y = np.random.randn(5, 4)
-
-        X_tensor, Y_tensor, device = dataset.move_dataset_to_device_and_flatten(X, Y, device="cpu")
-
-        assert X_tensor.device.type == "cpu"
-        assert Y_tensor.device.type == "cpu"

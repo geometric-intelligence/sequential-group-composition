@@ -329,179 +329,204 @@ class OnlineModularAdditionDataset1D(IterableDataset):
         return X, Y, sequence
 
 
-def build_modular_addition_sequence_dataset_generic(
-    template: np.ndarray,
-    k: int,
-    group,
-    mode: str = "sampled",
-    num_samples: int = 65536,
-    return_all_outputs: bool = False,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+class OfflineModularCompositionDataset:
+    """Offline dataset builder for group composition tasks.
+
+    Generates all (or sampled) input-output pairs for composing group elements
+    via the regular representation applied to a template.
+
+    Three factory methods cover the supported group families:
+      - group_dataset : any escnn group with a regular representation
+      - cn_dataset    : cyclic group C_n (uses np.roll, no escnn needed)
+      - cnxcn_dataset : product group C_n x C_n (uses 2D np.roll, no escnn needed)
     """
-    Build generic group composition dataset for sequence length k.
 
-    Works with any escnn group that has a regular representation.
-    For a sequence of k group elements (g1, g2, ..., gk), we compute:
-    - X[i, t, :] = regular_rep(g_t) @ template  (template transformed by g_t)
-    - Y[i, :] = regular_rep(g1 * g2 * ... * gk) @ template  (template transformed by composition)
+    @staticmethod
+    def group_dataset(
+        template: np.ndarray,
+        k: int,
+        group,
+        mode: str = "sampled",
+        num_samples: int = 65536,
+        return_all_outputs: bool = False,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Build generic group composition dataset for sequence length k.
 
-    Args:
-        template: (group_order,) template array
-        k: sequence length (number of group elements to compose)
-        group: escnn group object (e.g., Octahedral(), Icosahedral())
-        mode: "sampled" or "exhaustive"
-        num_samples: number of samples for "sampled" mode
-        return_all_outputs: if True, return intermediate outputs after each composition
+        Works with any escnn group that has a regular representation.
+        For a sequence of k group elements (g1, g2, ..., gk), we compute:
+        - X[i, t, :] = regular_rep(g_t) @ template
+        - Y[i, :]    = regular_rep(g1 * g2 * ... * gk) @ template
 
-    Returns:
-        X: (N, k, group_order) input sequences
-        Y: (N, group_order) or (N, k-1, group_order) target outputs
-        sequence: (N, k) integer indices of group elements per token
-    """
-    group_order = group.order()
+        Parameters
+        ----------
+        template : np.ndarray, shape (group_order,)
+            Template array.
+        k : int
+            Sequence length (number of group elements to compose).
+        group : escnn group object
+            Any group with a ``"regular"`` representation.
+        mode : str
+            ``"sampled"`` or ``"exhaustive"``.
+        num_samples : int
+            Number of samples when ``mode="sampled"``.
+        return_all_outputs : bool
+            If True, return intermediate composition outputs.
 
-    assert template.shape == (group_order,), (
-        f"template must be ({group_order},), got {template.shape}"
-    )
+        Returns
+        -------
+        X : np.ndarray, shape (N, k, group_order)
+        Y : np.ndarray, shape (N, group_order) or (N, k-1, group_order)
+        sequence : np.ndarray, shape (N, k)
+            Integer indices of group elements per token.
+        """
+        group_order = group.order()
 
-    # Get regular representation and list of elements
-    regular_rep = group.representations["regular"]
-    elements = list(group.elements)
-    n_elements = len(elements)
+        assert template.shape == (group_order,), (
+            f"template must be ({group_order},), got {template.shape}"
+        )
 
-    # Pre-compute representation matrices for all elements
-    rep_matrices = np.array([regular_rep(g) for g in elements])
+        regular_rep = group.representations["regular"]
+        elements = list(group.elements)
+        n_elements = len(elements)
 
-    if mode == "exhaustive":
-        total = n_elements**k
-        if total > 1_000_000:
-            raise ValueError(f"n_elements^k = {total} is huge; use mode='sampled' instead.")
-        N = total
+        rep_matrices = np.array([regular_rep(g) for g in elements])
 
-        # Generate all possible sequences of k element indices
-        sequence = np.zeros((N, k), dtype=np.int64)
-        for idx in range(N):
-            for t in range(k):
-                sequence[idx, t] = (idx // (n_elements**t)) % n_elements
-    else:
-        N = int(num_samples)
-        sequence = np.random.randint(0, n_elements, size=(N, k), dtype=np.int64)
-
-    # Initialize output arrays
-    X = np.zeros((N, k, group_order), dtype=np.float32)
-    Y = np.zeros((N, k, group_order), dtype=np.float32)
-
-    for i in range(N):
-        cumulative_rep = np.eye(group_order)
-
-        for t in range(k):
-            elem_idx = sequence[i, t]
-            g_rep = rep_matrices[elem_idx]
-
-            X[i, t, :] = g_rep @ template
-            cumulative_rep = g_rep @ cumulative_rep
-            Y[i, t, :] = cumulative_rep @ template
-
-    if not return_all_outputs:
-        Y = Y[:, -1, :]
-    else:
-        Y = Y[:, 1:, :]
-
-    return X, Y, sequence
-
-
-
-def cn_dataset(template):
-    """Generate a dataset for the cyclic group C_n modular addition operation."""
-    group_size = len(template)
-    X = np.zeros((group_size * group_size, 2, group_size))
-    Y = np.zeros((group_size * group_size, group_size))
-
-    idx = 0
-    for a in range(group_size):
-        for b in range(group_size):
-            q = (a + b) % group_size
-            X[idx, 0, :] = np.roll(template, a)
-            X[idx, 1, :] = np.roll(template, b)
-            Y[idx, :] = np.roll(template, q)
-            idx += 1
-
-    return X, Y
-
-
-def cnxcn_dataset(template):
-    r"""Generate a dataset for the 2D modular addition operation.
-
-    Parameters
-    ----------
-    template : np.ndarray
-        A flattened 2D square image of shape (image_length*image_length,).
-
-    Returns
-    -------
-    X : np.ndarray
-        Input data of shape (image_length^4, 2, image_length*image_length).
-    Y : np.ndarray
-        Output data of shape (image_length^4, image_length*image_length).
-    """
-    image_length, _ = template.shape
-    X = np.zeros((image_length**4, 2, image_length * image_length))
-    Y = np.zeros((image_length**4, image_length * image_length))
-    translations = np.zeros((image_length**4, 3, 2), dtype=int)
-
-    idx = 0
-
-    for a_x in range(image_length):
-        for a_y in range(image_length):
-            for b_x in range(image_length):
-                for b_y in range(image_length):
-                    q_x = (a_x + b_x) % image_length
-                    q_y = (a_y + b_y) % image_length
-                    X[idx, 0, :] = np.roll(np.roll(template, a_x, axis=0), a_y, axis=1).flatten()
-                    X[idx, 1, :] = np.roll(np.roll(template, b_x, axis=0), b_y, axis=1).flatten()
-                    Y[idx, :] = np.roll(np.roll(template, q_x, axis=0), q_y, axis=1).flatten()
-                    translations[idx, 0, :] = (a_x, a_y)
-                    translations[idx, 1, :] = (b_x, b_y)
-                    translations[idx, 2, :] = (q_x, q_y)
-                    idx += 1
-
-    return X, Y
-
-
-def move_dataset_to_device_and_flatten(X, Y, device=None):
-    """Move dataset tensors to available or specified device.
-
-    Parameters
-    ----------
-    X : np.ndarray
-        Input data of shape (num_samples, 2, p*p)
-    Y : np.ndarray
-        Target data of shape (num_samples, p*p)
-    device : torch.device, optional
-        Device to move tensors to.
-
-    Returns
-    -------
-    X : torch.Tensor
-        Input data tensor on specified device, flattened to (num_samples, 2*p*p)
-    Y : torch.Tensor
-        Target data tensor on specified device, flattened to (num_samples, p*p)
-    """
-    num_data_features = len(X[0][0])
-    X_flat = X.reshape(X.shape[0], 2 * num_data_features)
-    Y_flat = Y.reshape(Y.shape[0], num_data_features)
-    X_tensor = torch.tensor(X_flat, dtype=torch.float32)
-    Y_tensor = torch.tensor(Y_flat, dtype=torch.float32)
-
-    if device is None:
-        if torch.cuda.is_available():
-            device = torch.device("cuda")
-            print("GPU is available. Using CUDA.")
+        if mode == "exhaustive":
+            total = n_elements**k
+            if total > 1_000_000:
+                raise ValueError(
+                    f"n_elements^k = {total} is huge; use mode='sampled' instead."
+                )
+            N = total
+            sequence = np.zeros((N, k), dtype=np.int64)
+            for idx in range(N):
+                for t in range(k):
+                    sequence[idx, t] = (idx // (n_elements**t)) % n_elements
         else:
-            device = torch.device("cpu")
-            print("GPU is not available. Using CPU.")
+            N = int(num_samples)
+            sequence = np.random.randint(0, n_elements, size=(N, k), dtype=np.int64)
 
-    X_tensor = X_tensor.to(device)
-    Y_tensor = Y_tensor.to(device)
+        X = np.zeros((N, k, group_order), dtype=np.float32)
+        Y = np.zeros((N, k, group_order), dtype=np.float32)
 
-    return X_tensor, Y_tensor, device
+        for i in range(N):
+            cumulative_rep = np.eye(group_order)
+            for t in range(k):
+                elem_idx = sequence[i, t]
+                g_rep = rep_matrices[elem_idx]
+                X[i, t, :] = g_rep @ template
+                cumulative_rep = g_rep @ cumulative_rep
+                Y[i, t, :] = cumulative_rep @ template
+
+        if not return_all_outputs:
+            Y = Y[:, -1, :]
+        else:
+            Y = Y[:, 1:, :]
+
+        return X, Y, sequence
+
+    @staticmethod
+    def cn_dataset(template):
+        """Generate exhaustive k=2 dataset for cyclic group C_n.
+
+        Uses ``np.roll`` (no escnn group object required).
+
+        Parameters
+        ----------
+        template : np.ndarray, shape (n,)
+
+        Returns
+        -------
+        X : np.ndarray, shape (n**2, 2, n)
+        Y : np.ndarray, shape (n**2, n)
+        """
+        group_size = len(template)
+        X = np.zeros((group_size * group_size, 2, group_size))
+        Y = np.zeros((group_size * group_size, group_size))
+
+        idx = 0
+        for a in range(group_size):
+            for b in range(group_size):
+                q = (a + b) % group_size
+                X[idx, 0, :] = np.roll(template, a)
+                X[idx, 1, :] = np.roll(template, b)
+                Y[idx, :] = np.roll(template, q)
+                idx += 1
+
+        return X, Y
+
+    @staticmethod
+    def cnxcn_dataset(template):
+        r"""Generate exhaustive k=2 dataset for product group C_n x C_n.
+
+        Uses 2D ``np.roll`` (no escnn group object required).
+
+        Parameters
+        ----------
+        template : np.ndarray, shape (n, n)
+            2D template image.
+
+        Returns
+        -------
+        X : np.ndarray, shape (n**4, 2, n*n)
+        Y : np.ndarray, shape (n**4, n*n)
+        """
+        image_length, _ = template.shape
+        X = np.zeros((image_length**4, 2, image_length * image_length))
+        Y = np.zeros((image_length**4, image_length * image_length))
+
+        idx = 0
+        for a_x in range(image_length):
+            for a_y in range(image_length):
+                for b_x in range(image_length):
+                    for b_y in range(image_length):
+                        q_x = (a_x + b_x) % image_length
+                        q_y = (a_y + b_y) % image_length
+                        X[idx, 0, :] = np.roll(
+                            np.roll(template, a_x, axis=0), a_y, axis=1
+                        ).flatten()
+                        X[idx, 1, :] = np.roll(
+                            np.roll(template, b_x, axis=0), b_y, axis=1
+                        ).flatten()
+                        Y[idx, :] = np.roll(
+                            np.roll(template, q_x, axis=0), q_y, axis=1
+                        ).flatten()
+                        idx += 1
+
+        return X, Y
+
+    @staticmethod
+    def to_device_and_flatten(X, Y, device=None):
+        """Flatten X from (N, 2, d) to (N, 2*d), convert to tensors, move to device.
+
+        Parameters
+        ----------
+        X : np.ndarray, shape (N, 2, d)
+        Y : np.ndarray, shape (N, d)
+        device : torch.device or str, optional
+            If None, auto-detects CUDA availability.
+
+        Returns
+        -------
+        X_tensor : torch.Tensor, shape (N, 2*d)
+        Y_tensor : torch.Tensor, shape (N, d)
+        device : torch.device
+        """
+        num_data_features = len(X[0][0])
+        X_flat = X.reshape(X.shape[0], 2 * num_data_features)
+        Y_flat = Y.reshape(Y.shape[0], num_data_features)
+        X_tensor = torch.tensor(X_flat, dtype=torch.float32)
+        Y_tensor = torch.tensor(Y_flat, dtype=torch.float32)
+
+        if device is None:
+            if torch.cuda.is_available():
+                device = torch.device("cuda")
+                print("GPU is available. Using CUDA.")
+            else:
+                device = torch.device("cpu")
+                print("GPU is not available. Using CPU.")
+
+        X_tensor = X_tensor.to(device)
+        Y_tensor = Y_tensor.to(device)
+
+        return X_tensor, Y_tensor, device

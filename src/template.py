@@ -293,7 +293,7 @@ def mnist_2d(p1: int, p2: int, label: int, root: str = "data"):
 
 # --- 1D Synthetic Templates ---
 
-
+# TODO Remove fourier_1d: no more random Fourier. fixed_cn, fixed_cnxcn, fixed_group functions create custom_fourier templates.
 def fourier_1d(p: int, n_freqs: int, amp_max: float = 100, amp_min: float = 10, seed=None):
     """Generate 1D template from random Fourier modes.
 

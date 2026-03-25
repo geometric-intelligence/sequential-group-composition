@@ -333,8 +333,8 @@ def produce_plots_1d(
     print("Generating evaluation data for visualization...")
 
     if use_group_style:
-        X_raw, Y_raw = dataset.cn_dataset(template_1d)
-        X_eval_t, Y_eval_t, device = dataset.move_dataset_to_device_and_flatten(
+        X_raw, Y_raw = dataset.OfflineModularCompositionDataset.cn_dataset(template_1d)
+        X_eval_t, Y_eval_t, device = dataset.OfflineModularCompositionDataset.to_device_and_flatten(
             X_raw, Y_raw, device=device
         )
         print(f"  Generated {X_eval_t.shape[0]} samples for visualization")
@@ -546,7 +546,7 @@ def produce_plots_group(
 
     if model_type == "TwoLayerNet":
         # TwoLayerNet expects flattened binary pair input: (N, 2*group_size)
-        X_raw, Y_raw, _ = dataset.build_modular_addition_sequence_dataset_generic(
+        X_raw, Y_raw, _ = dataset.OfflineModularCompositionDataset.group_dataset(
             template, k=2, group=group, mode="exhaustive",
         )
         N_eval = X_raw.shape[0]
@@ -560,7 +560,7 @@ def produce_plots_group(
             Y_eval_t = Y_eval_t[indices]
     else:
         # Sequence models use the generic sequence dataset
-        X_eval, Y_eval, _ = dataset.build_modular_addition_sequence_dataset_generic(
+        X_eval, Y_eval, _ = dataset.OfflineModularCompositionDataset.group_dataset(
             template,
             k,
             group=group,
@@ -713,6 +713,7 @@ def train_single_run(config: dict, run_dir: Path = None) -> dict:
 
         if template_type == "mnist":
             template_1d = template.mnist_1d(p, config["data"]["mnist_label"], root="data")
+        # TODO: remove fourier in favor of custom_fourier for cn, using fixed_cn function.
         elif template_type == "fourier":
             n_freqs = config["data"]["n_freqs"]
             template_1d = template.fourier_1d(p, n_freqs=n_freqs, seed=config["data"]["seed"])
@@ -762,6 +763,7 @@ def train_single_run(config: dict, run_dir: Path = None) -> dict:
         if template_type == "mnist":
             template_2d = template.mnist_2d(p1, p2, config["data"]["mnist_label"], root="data")
         elif template_type == "fourier":
+            # TODO: remove fourier in favor of custom_fourier for cnxcn, using fixed_cnxcn function.
             n_freqs = config["data"]["n_freqs"]
             template_2d = template.unique_freqs_2d(
                 p1, p2, n_freqs=n_freqs, seed=config["data"]["seed"]
@@ -1046,18 +1048,17 @@ def train_single_run(config: dict, run_dir: Path = None) -> dict:
             # TwoLayerNet uses binary pair datasets from src/datamodule.py
             # Data shape: X=(N, 2, group_size) -> flattened to (N, 2*group_size), Y=(N, group_size)
             if group_name == "cn":
-                X_raw, Y_raw = dataset.cn_dataset(tpl)
+                X_raw, Y_raw = dataset.OfflineModularCompositionDataset.cn_dataset(tpl)
             elif group_name == "cnxcn":
-                X_raw, Y_raw = dataset.cnxcn_dataset(tpl)
+                X_raw, Y_raw = dataset.OfflineModularCompositionDataset.cnxcn_dataset(tpl)
             elif group_name in ("dihedral", "octahedral", "A5"):
-                X_raw, Y_raw, _ = dataset.build_modular_addition_sequence_dataset_generic(
+                X_raw, Y_raw, _ = dataset.OfflineModularCompositionDataset.group_dataset(
                     tpl, k=config["data"]["k"], group=group, mode="exhaustive",
                 )
             else:
                 raise ValueError(f"Unsupported group_name for TwoLayerNet: {group_name}")
 
-            # Flatten X from (N, 2, group_size) to (N, 2*group_size) and convert to tensors
-            X_all, Y_all, device = dataset.move_dataset_to_device_and_flatten(
+            X_all, Y_all, device = dataset.OfflineModularCompositionDataset.to_device_and_flatten(
                 X_raw, Y_raw, device=device
             )
 
@@ -1124,7 +1125,7 @@ def train_single_run(config: dict, run_dir: Path = None) -> dict:
                     return_all_outputs=config["model"]["return_all_outputs"],
                 )
             elif group_name in ("dihedral", "octahedral", "A5"):
-                X_train, Y_train, _ = dataset.build_modular_addition_sequence_dataset_generic(
+                X_train, Y_train, _ = dataset.OfflineModularCompositionDataset.group_dataset(
                     tpl,
                     config["data"]["k"],
                     group=group,
@@ -1134,7 +1135,7 @@ def train_single_run(config: dict, run_dir: Path = None) -> dict:
                 )
 
                 val_samples = max(1000, config["data"]["num_samples"] // 10)
-                X_val, Y_val, _ = dataset.build_modular_addition_sequence_dataset_generic(
+                X_val, Y_val, _ = dataset.OfflineModularCompositionDataset.group_dataset(
                     tpl,
                     config["data"]["k"],
                     group=group,
