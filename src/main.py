@@ -165,17 +165,31 @@ def produce_plots_cnxcn(
 
     ### ----- GENERATE EVALUATION DATA ----- ###
     print("Generating evaluation data for visualization...")
-    eval_ds_2d, _ = dataset.OfflineModularCompositionDataset.from_cnxcn(
-        config["data"]["p1"],
-        config["data"]["p2"],
-        template_2d,
-        config["data"]["k"],
-        mode="sampled",
-        num_samples=min(config["data"]["num_samples"], 1000),
-        return_all_outputs=config["model"]["return_all_outputs"],
-    )
-    X_seq_2d_t = eval_ds_2d.X.to(device)
-    Y_seq_2d_t = eval_ds_2d.Y.to(device)
+    model_type = config["model"]["model_type"]
+
+    if model_type == "TwoLayerNet":
+        eval_ds_2d, _ = dataset.OfflineModularCompositionDataset.from_cnxcn(
+            config["data"]["p1"],
+            config["data"]["p2"],
+            template_2d,
+            k=2,
+            mode="exhaustive",
+        )
+        N_eval = len(eval_ds_2d)
+        X_eval_2d_t = eval_ds_2d.X.reshape(N_eval, -1).to(device)
+        Y_eval_2d_t = eval_ds_2d.Y.to(device)
+    else:
+        eval_ds_2d, _ = dataset.OfflineModularCompositionDataset.from_cnxcn(
+            config["data"]["p1"],
+            config["data"]["p2"],
+            template_2d,
+            config["data"]["k"],
+            mode="sampled",
+            num_samples=min(config["data"]["num_samples"], 1000),
+            return_all_outputs=config["model"]["return_all_outputs"],
+        )
+        X_eval_2d_t = eval_ds_2d.X.to(device)
+        Y_eval_2d_t = eval_ds_2d.Y.to(device)
     print(f"  Generated {len(eval_ds_2d)} samples for visualization")
 
     ### ----- COMPUTE CHECKPOINT INDICES ----- ###
@@ -229,13 +243,13 @@ def produce_plots_cnxcn(
         )
 
     ### ----- PLOT MODEL PREDICTIONS ----- ###
-    if plot_predictions:
+    if plot_predictions and model_type != "TwoLayerNet":
         print("Plotting model predictions over time...")
         viz.plot_predictions_2d(
             model,
             param_hist,
-            X_seq_2d_t,
-            Y_seq_2d_t,
+            X_eval_2d_t,
+            Y_eval_2d_t,
             config["data"]["p1"],
             config["data"]["p2"],
             steps=checkpoint_indices,
@@ -244,7 +258,6 @@ def produce_plots_cnxcn(
         )
 
     ### ----- PLOT W_MIX FREQUENCY STRUCTURE (QuadraticRNN only) ----- ###
-    model_type = config["model"]["model_type"]
     if plot_wmix and model_type == "QuadraticRNN":
         print("Creating Fourier modes reference...")
         tracked_freqs = power.topk_template_freqs(template_2d, K=10)
