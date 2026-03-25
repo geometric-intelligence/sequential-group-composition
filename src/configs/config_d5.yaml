@@ -16,11 +16,11 @@ data:
   # custom_fourier powers (one per irrep)
   # D5 irreps: [1, 1, 2, 2]
   # Well-separated powers for clean staircase learning
-  powers: [0.0, 600.0, 200.0, 50.0]
+  powers: [0.0, 600.0, 200.0, 20.0]
 
 model:
   model_type: TwoLayerNet     # Model architecture: 'QuadraticRNN' | 'SequentialMLP' | 'TwoLayerNet'
-  hidden_dim: 500             # Hidden layer width (hidden_factor=30 * group_size=10)
+  hidden_dim: 200             # Hidden layer width (hidden_factor=20 * group_size=10)
   init_scale: 0.0000001      # Weight initialization scale
   nonlinearity: square        # Activation function (TwoLayerNet only): 'square' | ...
   output_scale: 1.0           # Output layer scaling factor (TwoLayerNet only)
