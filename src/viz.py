@@ -474,6 +474,211 @@ def plot_predictions_1d(
     return fig, axes
 
 
+def _hidden_by_group_weights_from_state_dict(sd: dict) -> np.ndarray | None:
+    """Return weight matrix of shape (hidden, group_dim) for TwoLayerNet ``W`` or RNN ``W_out.T``."""
+    if "W" in sd:
+        return sd["W"].detach().cpu().numpy()
+    if "W_out" in sd:
+        return sd["W_out"].detach().cpu().numpy().T
+    return None
+
+
+def plot_w_dominant_irrep_fraction(
+    param_hist: list,
+    param_save_indices: list[int],
+    p: int,
+    x_label: str,
+    group_name: str,
+    group=None,
+    p1: int | None = None,
+    p2: int | None = None,
+    save_path: str | None = None,
+    show: bool = False,
+    num_points: int = 1000,
+    active_energy_thresh: float = 1e-4,
+):
+    """Plot how each hidden unit's output weights concentrate on one Fourier / group mode over training.
+
+    **What you see**
+
+    - **Each colored line is one hidden neuron** (one row of ``W`` for :class:`~src.model.TwoLayerNet`,
+      or one column of ``W_out`` turned into a row for RNN/MLP models). Lines use the color of the
+      **mode or irrep** that neuron ends up favoring (see below).
+    - **Inactive** neurons (their total spectral power never exceeds ``active_energy_thresh``) are
+      omitted so the plot is not flooded with flat zeros.
+
+    **What “power” and “fraction” mean**
+
+    Each neuron's weights form a vector on the group (length ``p``). That vector is decomposed into a
+    **power spectrum**: either cyclic bins via :class:`src.power.CyclicPower` (for ``cn`` / ``cnxcn``)
+    or irrep-wise power via :class:`src.power.GroupPower` (for escnn groups). **Total power** is the
+    sum of that spectrum—how much “energy” the row has in Fourier / group space. **Fraction of power**
+    here means: at time ``t``, take the power in **one** chosen mode and divide by a **single**
+    normalization: the **maximum** of total power that neuron ever had over training. So the y-axis
+    is between 0 and 1 and answers: “At this time, how much of this neuron's *peak* total spectral
+    weight sits in this one mode?”
+
+    **What “final-dominant mode” means**
+
+    First we look at the **last** saved snapshot. For each neuron we find which mode / irrep has the
+    **most** power there—that index is fixed for that neuron for the whole plot. So we are **not**
+    tracking “whatever is dominant at each time step”; we ask: “The mode this neuron **ends up**
+    specializing in—how did the fraction of *peak* total power in that mode evolve from initialization
+    to the end?” A curve that rises toward 1 means that neuron **converged** toward putting almost all
+    of its (peak-normalized) spectral weight into that final preferred mode. A curve that stays low
+    means that mode was not yet dominant at that time (relative to the neuron's own best total power
+    later).
+
+    **How to read the figure**
+
+    - Many lines near **1** late in training ⇒ most active neurons' rows are **almost entirely** one
+      Fourier / irrep mode (the one they favor at the end).
+    - **Spread** of line colors ⇒ different neurons specialize to **different** modes.
+    - **Rising** curves ⇒ **increasing** alignment of that neuron's weights with the mode it will
+      eventually dominate.
+
+    Args:
+        param_hist: Parameter snapshots from training
+        param_save_indices: Step or epoch index for each snapshot (same length as ``param_hist``)
+        p: Flattened group dimension (second axis of ``W`` / ``W_out.T``)
+        x_label: X-axis label (e.g. ``\"Epoch\"`` or ``\"Step\"``)
+        group_name: ``\"cn\"``, ``\"cnxcn\"``, or an escnn-backed name (e.g. ``\"dihedral\"``)
+        group: escnn ``Group`` (required unless ``group_name`` is ``cn`` or ``cnxcn``)
+        p1, p2: Grid shape for ``cnxcn`` (required when ``group_name == \"cnxcn\"``)
+        save_path: If set, save figure to this path
+        show: If True, display the figure
+        num_points: Number of log-spaced snapshots along training to use
+        active_energy_thresh: Neurons with max total power below this are skipped
+
+    Returns:
+        ``matplotlib.figure.Figure`` or ``None`` if the model has no ``W`` / ``W_out`` parameters
+    """
+    import src.power as power
+
+    if not param_hist:
+        return None
+
+    use_cyclic = group_name in ("cn", "cnxcn")
+    if not use_cyclic and group is None:
+        return None
+    if group_name == "cnxcn" and (p1 is None or p2 is None):
+        return None
+
+    W0 = _hidden_by_group_weights_from_state_dict(param_hist[0])
+    if W0 is None:
+        return None
+    if W0.shape[1] != p:
+        return None
+    if use_cyclic:
+        if group_name == "cnxcn" and p != p1 * p2:
+            return None
+    elif p != group.order():
+        return None
+
+    hidden_size = W0.shape[0]
+
+    if use_cyclic:
+        if group_name == "cn":
+            probe = power.powers_per_neuron_rows_cyclic(W0[:1], template_dim=1)
+        else:
+            probe = power.powers_per_neuron_rows_cyclic(
+                W0[:1], template_dim=2, p1=p1, p2=p2
+            )
+        n_modes = probe.shape[1]
+        ylabel = (
+            r"Fraction in final dominant mode ($E_{\mathrm{dom}}/\max_t E_{\mathrm{tot}}$)"
+        )
+    else:
+        n_modes = len(group.irreps())
+        ylabel = r"Fraction in final dominant irrep ($E_{\mathrm{dom}}/\max_t E_{\mathrm{tot}}$)"
+
+    cmap = plt.colormaps.get_cmap("tab20").resampled(max(n_modes, 1))
+    manual_colors = {
+        0: "tab:blue",
+        1: "tab:orange",
+        2: "tab:red",
+        3: "tab:green",
+        4: "tab:brown",
+        5: "tab:purple",
+    }
+    colors = [manual_colors.get(i, cmap(i)) for i in range(n_modes)]
+
+    n_snap = len(param_hist)
+    max_idx = max(0, n_snap - 1)
+    if max_idx == 0:
+        steps = np.array([0], dtype=int)
+    else:
+        steps = np.unique(np.logspace(0, np.log10(max_idx), num_points, dtype=int))
+        steps = np.sort(np.unique(np.concatenate([[0], steps])))
+
+    W_power_over_time = []
+    for step in steps:
+        W = _hidden_by_group_weights_from_state_dict(param_hist[step])
+        if W is None or W.shape != (hidden_size, p):
+            return None
+        if use_cyclic:
+            if group_name == "cn":
+                row_powers = power.powers_per_neuron_rows_cyclic(
+                    W, template_dim=1
+                )
+            else:
+                row_powers = power.powers_per_neuron_rows_cyclic(
+                    W, template_dim=2, p1=p1, p2=p2
+                )
+        else:
+            row_powers = power.powers_per_neuron_rows(W, group)
+        W_power_over_time.append(row_powers)
+
+    W_power_over_time = np.array(W_power_over_time)
+    final_power = W_power_over_time[-1]
+    dominant_idx = np.argmax(final_power, axis=1)
+
+    dominant_fraction_over_time = np.zeros((len(steps), hidden_size))
+    for h in range(hidden_size):
+        k = dominant_idx[h]
+        dominant_energy = W_power_over_time[:, h, k]
+        total_energy = W_power_over_time[:, h, :].sum(axis=1)
+        max_tot = np.max(total_energy)
+        if max_tot >= active_energy_thresh:
+            dominant_fraction_over_time[:, h] = dominant_energy / max_tot
+        else:
+            dominant_fraction_over_time[:, h] = np.nan
+
+    x_plot = np.array(param_save_indices, dtype=float)[steps]
+
+    fig, ax = plt.subplots(figsize=(8, 6))
+    for h in range(hidden_size):
+        if not np.any(np.isfinite(dominant_fraction_over_time[:, h])):
+            continue
+        k = int(dominant_idx[h])
+        ax.plot(
+            x_plot,
+            dominant_fraction_over_time[:, h],
+            color=colors[k],
+            lw=2,
+            alpha=0.5,
+        )
+
+    ax.set_xscale("log")
+    ax.set_ylim(0, 1.02)
+    ax.set_xlabel(x_label, fontsize=24)
+    ax.set_ylabel(ylabel, fontsize=19)
+    style_axes(ax)
+    ax.grid(False)
+    plt.tight_layout()
+
+    if save_path:
+        plt.savefig(save_path, bbox_inches="tight")
+        print(f"  ✓ Saved W dominant-irrep fraction plot to {save_path}")
+
+    if show:
+        plt.show()
+    else:
+        plt.close()
+
+    return fig
+
+
 def plot_power_1d(
     model,
     param_history,

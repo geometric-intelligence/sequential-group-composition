@@ -128,10 +128,13 @@ def produce_plots_2d(
     """
     print("\n=== Generating Analysis Plots ===")
 
-    plots = config.get("analysis", {}).get("plots", {})
-    plot_training_loss = plots.get("training_loss", True)
-    plot_predictions = plots.get("predictions", True)
-    plot_wmix = plots.get("wmix", True)
+    plots_bool_dict = config.get("analysis", {}).get("plots", {})
+    plot_training_loss_bool = plots_bool_dict.get("training_loss", True)
+    plot_predictions_bool = plots_bool_dict.get("predictions", True)
+    plot_wmix_bool = plots_bool_dict.get("wmix", True)
+    plot_w_dominant_irrep_fraction_bool = plots_bool_dict.get(
+        "w_dominant_irrep_fraction", True
+    )
 
     ### ----- COMPUTE X-AXIS VALUES ----- ###
     group_name = config["data"]["group_name"]
@@ -189,7 +192,7 @@ def produce_plots_2d(
     )
 
     ### ----- PLOT TRAINING LOSS ----- ###
-    if plot_training_loss:
+    if plot_training_loss_bool:
         print("\nPlotting training loss...")
 
         # Plot 1: Loss vs Steps/Epochs
@@ -229,7 +232,7 @@ def produce_plots_2d(
         )
 
     ### ----- PLOT MODEL PREDICTIONS ----- ###
-    if plot_predictions:
+    if plot_predictions_bool:
         print("Plotting model predictions over time...")
         viz.plot_predictions_2d(
             model,
@@ -245,7 +248,7 @@ def produce_plots_2d(
 
     ### ----- PLOT W_MIX FREQUENCY STRUCTURE (QuadraticRNN only) ----- ###
     model_type = config["model"]["model_type"]
-    if plot_wmix and model_type == "QuadraticRNN":
+    if plot_wmix_bool and model_type == "QuadraticRNN":
         print("Creating Fourier modes reference...")
         tracked_freqs = power.topk_template_freqs(template_2d, K=10)
         colors = plt.cm.tab10(np.linspace(0, 1, len(tracked_freqs)))
@@ -264,6 +267,27 @@ def produce_plots_2d(
         )
     elif model_type != "QuadraticRNN":
         print("Skipping W_mix frequency structure plot (not applicable for SequentialMLP)")
+
+    ### ----- PLOT W-ROW DOMINANT IRREP FRACTION (TwoLayerNet / W_out) ----- ###
+    if plot_w_dominant_irrep_fraction_bool:
+        print("Plotting W-row dominant irrep fraction over time...")
+        p_flat_2d = config["data"]["p1"] * config["data"]["p2"]
+        fig_w = viz.plot_w_dominant_irrep_fraction(
+            param_hist=param_hist,
+            param_save_indices=param_save_indices,
+            p=p_flat_2d,
+            x_label=x_label_steps,
+            group_name="cnxcn",
+            p1=config["data"]["p1"],
+            p2=config["data"]["p2"],
+            save_path=os.path.join(run_dir, "w_dominant_irrep_fraction.pdf"),
+            show=False,
+        )
+        if fig_w is None:
+            print(
+                "  (skipped w_dominant_irrep_fraction: need W or W_out with shape"
+                f" (hidden, p1*p2) for p1={config['data']['p1']}, p2={config['data']['p2']})"
+            )
 
     print("\n✓ All plots generated successfully!")
 
@@ -295,10 +319,13 @@ def produce_plots_1d(
     """
     print("\n=== Generating Analysis Plots (1D) ===")
 
-    plots = config.get("analysis", {}).get("plots", {})
-    plot_training_loss = plots.get("training_loss", True)
-    plot_predictions = plots.get("predictions", True)
-    plot_power_spectrum = plots.get("power_spectrum", True)
+    plots_bool_dict = config.get("analysis", {}).get("plots", {})
+    plot_training_loss_bool = plots_bool_dict.get("training_loss", True)
+    plot_predictions_bool = plots_bool_dict.get("predictions", True)
+    plot_power_spectrum = plots_bool_dict.get("power_spectrum", True)
+    plot_w_dominant_irrep_fraction_bool = plots_bool_dict.get(
+        "w_dominant_irrep_fraction", True
+    )
 
     ### ----- COMPUTE X-AXIS VALUES ----- ###
     p = config["data"]["p"]
@@ -362,7 +389,7 @@ def produce_plots_1d(
     )
 
     ### ----- PLOT TRAINING LOSS ----- ###
-    if plot_training_loss:
+    if plot_training_loss_bool:
         print("\nPlotting training loss...")
 
         _, axes = plt.subplots(2, 2, figsize=(12, 10))
@@ -403,7 +430,7 @@ def produce_plots_1d(
 
     ### ----- PLOT MODEL PREDICTIONS ----- ###
     if not use_group_style:
-        if plot_predictions:
+        if plot_predictions_bool:
             print("Plotting model predictions over time...")
             viz.plot_predictions_1d(
                 model,
@@ -455,6 +482,23 @@ def produce_plots_1d(
             show=False,
         )
 
+    if plot_w_dominant_irrep_fraction_bool:
+        print("Plotting W-row dominant irrep fraction over time...")
+        fig_w = viz.plot_w_dominant_irrep_fraction(
+            param_hist=param_hist,
+            param_save_indices=param_save_indices,
+            p=p,
+            x_label=x_label_steps,
+            group_name="cn",
+            save_path=os.path.join(run_dir, "w_dominant_irrep_fraction.pdf"),
+            show=False,
+        )
+        if fig_w is None:
+            print(
+                "  (skipped w_dominant_irrep_fraction: need W or W_out with second dim"
+                f" {p})"
+            )
+
     print(f"\n✓ All C{p} plots generated successfully!")
 
 
@@ -498,10 +542,13 @@ def produce_plots_group(
 
     print(f"\n=== Generating Analysis Plots ({group_label}) ===")
 
-    plots = config.get("analysis", {}).get("plots", {})
-    plot_training_loss = plots.get("training_loss", True)
-    plot_predictions = plots.get("predictions", True)
-    plot_power_spectrum = plots.get("power_spectrum", True)
+    plots_bool_dict = config.get("analysis", {}).get("plots", {})
+    plot_training_loss_bool = plots_bool_dict.get("training_loss", True)
+    plot_predictions_bool = plots_bool_dict.get("predictions", True)
+    plot_power_spectrum = plots_bool_dict.get("power_spectrum", True)
+    plot_w_dominant_irrep_fraction_bool = plots_bool_dict.get(
+        "w_dominant_irrep_fraction", True
+    )
 
     group_order = group.order()
 
@@ -578,7 +625,7 @@ def produce_plots_group(
     print(f"Analysis checkpoints: {checkpoint_indices} (out of {total_checkpoints})")
 
     ### ----- PLOT TRAINING LOSS ----- ###
-    if plot_training_loss:
+    if plot_training_loss_bool:
         print("\nPlotting training loss...")
 
         _, axes = plt.subplots(2, 2, figsize=(12, 10))
@@ -615,7 +662,7 @@ def produce_plots_group(
     print(f"  ✓ Saved {training_loss_path}")
 
     ### ----- PLOT MODEL PREDICTIONS OVER TIME ----- ###
-    if plot_predictions:
+    if plot_predictions_bool:
         print("\nPlotting model predictions over time...")
         viz.plot_predictions_group(
             model=model,
@@ -653,7 +700,7 @@ def produce_plots_group(
         print(f"  ✓ Saved {os.path.join(run_dir, 'power_spectrum_analysis.pdf')}")
 
     ### ----- PLOT COMBINED LOSS AND POWER ----- ###
-    if plot_training_loss and power_data is not None:
+    if plot_training_loss_bool and power_data is not None:
         print("\nPlotting combined loss and power...")
         viz.plot_loss_and_power(
             x_values=x_values,
@@ -668,6 +715,24 @@ def produce_plots_group(
                 f" h={config['model']['hidden_dim']}, {config['training']['optimizer']})"
             ),
         )
+
+    if plot_w_dominant_irrep_fraction_bool:
+        print("\nPlotting W-row dominant irrep fraction over time...")
+        fig_w = viz.plot_w_dominant_irrep_fraction(
+            param_hist=param_hist,
+            param_save_indices=param_save_indices,
+            p=group_order,
+            x_label=x_label,
+            group_name=group_name,
+            group=group,
+            save_path=os.path.join(run_dir, "w_dominant_irrep_fraction.pdf"),
+            show=False,
+        )
+        if fig_w is None:
+            print(
+                "  (skipped w_dominant_irrep_fraction: need W or W_out with second dim"
+                f" {group_order} matching escnn group order)"
+            )
 
     print(f"\n✓ All {group_label} plots generated successfully!")
 

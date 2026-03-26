@@ -42,7 +42,12 @@ training:
   save_param_interval: 1      # Save parameter snapshot every N epochs/steps
   reduction_threshold: null   # Early stopping: stop at this loss-reduction fraction (null = disabled)
 
-device: cuda:0                # Device: 'cuda:N' | 'cpu'
+device: cuda:1                # Device: 'cuda:N' | 'cpu'
 
 analysis:
   checkpoints: [0.0, 1.0]    # Fractions of training at which to run analysis (0.0 = start, 1.0 = end)
+  plots:
+    training_loss: true
+    predictions: true
+    power_spectrum: true
+    w_dominant_irrep_fraction: true

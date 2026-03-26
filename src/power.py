@@ -12,17 +12,37 @@ class CyclicPower:
     ----------
     template : ndarray (p*p)
         Flattened 2D template array.
+    template_dim : int
+        ``1`` for C_n (1D cyclic), ``2`` for C_n × C_m as a 2D grid.
+    p1, p2 : int, optional
+        For ``template_dim == 2``, grid shape ``(p1, p2)`` when the grid is not square.
+        If omitted, the template must be square ``(g, g)`` with ``len(template) == g**2``.
     """
 
-    def __init__(self, template, template_dim):
-        self.template = template
+    def __init__(self, template, template_dim, p1=None, p2=None):
+        self.template = np.asarray(template).ravel()
         self.template_dim = template_dim
+        self._p1 = p1
+        self._p2 = p2
         if template_dim == 2:
-            self.group_size = int(np.sqrt(len(template)))
-            self.template_2D = template.reshape((self.group_size, self.group_size))
+            if p1 is not None and p2 is not None:
+                if self.template.size != p1 * p2:
+                    raise ValueError(
+                        f"template length {self.template.size} must equal p1*p2={p1 * p2}"
+                    )
+                self.template_2D = self.template.reshape((p1, p2))
+                self.group_size = p1 * p2
+            else:
+                g = int(np.sqrt(len(self.template)))
+                if g * g != len(self.template):
+                    raise ValueError(
+                        "2D cyclic template must be square or pass p1, p2 for a rectangular grid"
+                    )
+                self.group_size = g
+                self.template_2D = self.template.reshape((self.group_size, self.group_size))
             self.x_freqs, self.y_freqs, self.power = self.cnxcn_power_spectrum(return_freqs=True)
         else:
-            self.group_size = len(template)
+            self.group_size = len(self.template)
             self.freqs, self.power = self.cn_power_spectrum(return_freqs=True)
 
     def cn_power_spectrum(self, return_freqs=False):
@@ -133,8 +153,17 @@ class CyclicPower:
         power = self.power
 
         if self.template_dim == 2:
-            img_size = int(np.sqrt(len(self.template)))
-            print("Computing loss plateau predictions for template of shape:", (img_size, img_size))
+            if self._p1 is not None and self._p2 is not None:
+                print(
+                    "Computing loss plateau predictions for template of shape:",
+                    (self._p1, self._p2),
+                )
+            else:
+                img_size = int(np.sqrt(len(self.template)))
+                print(
+                    "Computing loss plateau predictions for template of shape:",
+                    (img_size, img_size),
+                )
             power = power.flatten()
 
         nonzero_power_mask = power > 1e-20
@@ -218,6 +247,86 @@ class GroupPower:
         coef = 1 / p
         plateau_predictions = [alpha * coef for alpha in plateau_predictions]
         return plateau_predictions
+
+
+def powers_per_neuron_rows(W: np.ndarray, group) -> np.ndarray:
+    """Irrep power spectrum for each row of ``W`` using :class:`GroupPower`.
+
+    Each row is treated as a real signal on ``group`` (length ``group.order()``).
+
+    Parameters
+    ----------
+    W : ndarray, shape (hidden_size, group.order())
+    group : escnn ``Group``
+        Must match the group structure of the weight rows.
+
+    Returns
+    -------
+    ndarray, shape (hidden_size, len(group.irreps()))
+        ``out[h, i]`` is the normalized irrep power at index ``i`` for hidden unit ``h``.
+    """
+    if W.ndim != 2:
+        raise ValueError(f"W must be 2-D, got shape {W.shape}")
+    if W.shape[1] != group.order():
+        raise ValueError(
+            f"W.shape[1] ({W.shape[1]}) must equal group.order() ({group.order()})"
+        )
+    hidden = W.shape[0]
+    n_irreps = len(group.irreps())
+    out = np.empty((hidden, n_irreps))
+    for h in range(hidden):
+        out[h] = GroupPower(W[h], group).power
+    return out
+
+
+def powers_per_neuron_rows_cyclic(
+    W: np.ndarray,
+    *,
+    template_dim: int,
+    p1: int | None = None,
+    p2: int | None = None,
+) -> np.ndarray:
+    """Cyclic power spectrum for each row of ``W`` using :class:`CyclicPower`.
+
+    Parameters
+    ----------
+    W : ndarray, shape (hidden_size, p) or (hidden_size, p1 * p2)
+    template_dim : int
+        ``1`` for C_n (1D), ``2`` for CnxCn grid flattened row-major.
+    p1, p2 : int, optional
+        Required when ``template_dim == 2`` (rectangular or explicit grid shape).
+
+    Returns
+    -------
+    ndarray
+        For 1D, shape ``(hidden_size, p // 2 + 1)``. For 2D, shape ``(hidden_size, M * (N//2 + 1))``
+        with ``M, N = p1, p2`` (flattened :class:`CyclicPower` 2D power).
+    """
+    if W.ndim != 2:
+        raise ValueError(f"W must be 2-D, got shape {W.shape}")
+    hidden = W.shape[0]
+    if template_dim == 1:
+        p = W.shape[1]
+        num_coeffs = (p // 2) + 1
+        out = np.empty((hidden, num_coeffs))
+        for h in range(hidden):
+            out[h] = CyclicPower(W[h], template_dim=1).power
+        return out
+    if template_dim != 2:
+        raise ValueError(f"template_dim must be 1 or 2, got {template_dim}")
+    if p1 is None or p2 is None:
+        raise ValueError("p1 and p2 are required for cyclic 2D (CyclicPower template_dim=2)")
+    if W.shape[1] != p1 * p2:
+        raise ValueError(
+            f"W.shape[1] ({W.shape[1]}) must equal p1*p2 ({p1 * p2})"
+        )
+    cp0 = CyclicPower(W[0], template_dim=2, p1=p1, p2=p2)
+    n_bins = cp0.power.size
+    out = np.empty((hidden, n_bins))
+    out[0] = cp0.power.ravel()
+    for h in range(1, hidden):
+        out[h] = CyclicPower(W[h], template_dim=2, p1=p1, p2=p2).power.ravel()
+    return out
 
 
 def model_power_over_time(group_name, model, param_history, model_inputs, group=None):
