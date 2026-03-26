@@ -83,9 +83,9 @@ The repository includes preconfigured experiments for eight groups:
 | Octahedral $O_h$ | `config_oh.yaml` | 24 | 2 | TwoLayerNet |
 | Icosahedral $A_5$ | `config_a5.yaml` | 60 | 2 | TwoLayerNet |
 
-### Combined Plot (Figure 1)
+### Reproduce Paper's Figure
 
-Reproduce the main paper figure (training loss + power spectrum for C11, C5xC5, D5, Oh, A5):
+Reproduce the paper's figure (training loss + power spectrum for C11, C5xC5, D5, Oh, A5):
 
 ```bash
 python src/main.py --combined-plot
