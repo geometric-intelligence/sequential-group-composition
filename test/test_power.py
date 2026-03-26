@@ -206,12 +206,8 @@ class TestGroupPower:
     def test_group_power_spectrum(self):
         """Test that power.GroupPower computes correct power spectrum."""
         group = Octahedral()
-        irrep_sizes = [irrep.size for irrep in group.irreps()]
         powers = [0.0, 20.0, 20.0, 100.0, 0.0]
-        fourier_coef_diag_values = [
-            np.sqrt(group.order() * p / dim**2) for p, dim in zip(powers, irrep_sizes)
-        ]
-        tpl = template.fixed_group(group, fourier_coef_diag_values=fourier_coef_diag_values)
+        tpl = template.fixed_group(group, powers=powers)
 
         gp = power.GroupPower(tpl, group)
 
@@ -224,12 +220,8 @@ class TestGroupPowerSpectrum:
     def test_matches_class_method(self):
         """Test that standalone function matches GroupPower class result."""
         group = Octahedral()
-        irrep_sizes = [irrep.size for irrep in group.irreps()]
         powers = [0.0, 20.0, 20.0, 100.0, 0.0]
-        fourier_coef_diag_values = [
-            np.sqrt(group.order() * p / dim**2) for p, dim in zip(powers, irrep_sizes)
-        ]
-        tpl = template.fixed_group(group, fourier_coef_diag_values=fourier_coef_diag_values)
+        tpl = template.fixed_group(group, powers=powers)
 
         spectrum = power.group_power_spectrum(group, tpl)
         gp = power.GroupPower(tpl, group)

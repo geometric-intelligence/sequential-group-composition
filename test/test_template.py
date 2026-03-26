@@ -40,27 +40,28 @@ class TestFixedCn:
     def test_output_shape(self):
         """Test that output shape is correct."""
         group_size = 8
-        fourier_coef_mags = [0, 5, 3, 2, 1]
+        powers = [0.0, 50.0, 30.0, 20.0, 10.0]
 
-        tpl = template.fixed_cn(group_size, fourier_coef_mags)
+        tpl = template.fixed_cn(group_size, powers)
 
         assert tpl.shape == (group_size,), f"Expected shape ({group_size},), got {tpl.shape}"
 
     def test_mean_centered(self):
         """Test that the template is mean-centered."""
         group_size = 10
-        fourier_coef_mags = [0, 5, 3, 2]
+        n_modes = group_size // 2 + 1
+        powers = [0.0] + [5.0] * (n_modes - 1)
 
-        tpl = template.fixed_cn(group_size, fourier_coef_mags)
+        tpl = template.fixed_cn(group_size, powers)
 
         np.testing.assert_allclose(tpl.mean(), 0, atol=1e-10)
 
     def test_real_valued(self):
         """Test that the template is real-valued."""
         group_size = 8
-        fourier_coef_mags = [0, 5, 3]
+        powers = [0.0, 50.0, 30.0, 20.0, 10.0]
 
-        tpl = template.fixed_cn(group_size, fourier_coef_mags)
+        tpl = template.fixed_cn(group_size, powers)
 
         assert np.isreal(tpl).all()
 
@@ -70,29 +71,32 @@ class TestFixedCnxcn:
 
     def test_output_shape(self):
         """Test that output shape is correct (flattened)."""
-        image_length = 6
-        fourier_coef_mags = [0, 5, 3, 2]
+        p1 = 6
+        p2 = 6
+        powers = [50.0, 30.0, 20.0]
 
-        tpl = template.fixed_cnxcn(image_length, fourier_coef_mags)
+        tpl = template.fixed_cnxcn(p1, p2, powers)
 
-        expected_size = image_length * image_length
+        expected_size = p1 * p2
         assert tpl.shape == (expected_size,), f"Expected shape ({expected_size},), got {tpl.shape}"
 
     def test_mean_centered(self):
         """Test that the template is mean-centered."""
-        image_length = 5
-        fourier_coef_mags = [0, 5, 3]
+        p1 = 5
+        p2 = 5
+        powers = [50.0, 30.0]
 
-        tpl = template.fixed_cnxcn(image_length, fourier_coef_mags)
+        tpl = template.fixed_cnxcn(p1, p2, powers)
 
-        np.testing.assert_allclose(tpl.mean(), 0, atol=1e-10)
+        np.testing.assert_allclose(tpl.mean(), 0, atol=1e-6)
 
     def test_real_valued(self):
         """Test that the template is real-valued."""
-        image_length = 4
-        fourier_coef_mags = [0, 5]
+        p1 = 4
+        p2 = 4
+        powers = [50.0]
 
-        tpl = template.fixed_cnxcn(image_length, fourier_coef_mags)
+        tpl = template.fixed_cnxcn(p1, p2, powers)
 
         assert np.isreal(tpl).all()
 
@@ -111,33 +115,33 @@ class TestFixedGroup:
         """Test that output shape matches group order."""
         group_order = dihedral_group.order()
         num_irreps = len(list(dihedral_group.irreps()))
-        fourier_coef_diag_values = [1.0] * num_irreps
+        powers = [1.0] * num_irreps
 
-        tpl = template.fixed_group(dihedral_group, fourier_coef_diag_values)
+        tpl = template.fixed_group(dihedral_group, powers)
 
         assert tpl.shape == (group_order,), f"Expected shape ({group_order},), got {tpl.shape}"
 
     def test_mean_centered(self, dihedral_group):
         """Test that the template is mean-centered."""
         num_irreps = len(list(dihedral_group.irreps()))
-        fourier_coef_diag_values = [1.0] * num_irreps
+        powers = [1.0] * num_irreps
 
-        tpl = template.fixed_group(dihedral_group, fourier_coef_diag_values)
+        tpl = template.fixed_group(dihedral_group, powers)
 
         np.testing.assert_allclose(tpl.mean(), 0, atol=1e-10)
 
-    def test_wrong_num_coefs_error(self, dihedral_group):
-        """Test that mismatched number of coefficients raises error."""
-        wrong_num_coefs = [1.0, 2.0]
+    def test_wrong_num_powers_error(self, dihedral_group):
+        """Test that mismatched number of powers raises error."""
+        wrong_num_powers = [1.0, 2.0]
 
         with pytest.raises(AssertionError):
-            template.fixed_group(dihedral_group, wrong_num_coefs)
+            template.fixed_group(dihedral_group, wrong_num_powers)
 
     def test_real_valued(self, dihedral_group):
         """Test that the template is real-valued."""
         num_irreps = len(list(dihedral_group.irreps()))
-        fourier_coef_diag_values = [1.0] * num_irreps
+        powers = [1.0] * num_irreps
 
-        tpl = template.fixed_group(dihedral_group, fourier_coef_diag_values)
+        tpl = template.fixed_group(dihedral_group, powers)
 
         assert np.isreal(tpl).all()

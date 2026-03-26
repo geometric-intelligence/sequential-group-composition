@@ -1,40 +1,43 @@
 # ============================================================================
-# Configuration: Product Group C_4 x C_4
+# Configuration: Product Group C_5 x C_5
 # ============================================================================
-# C4 x C4 has order 16. Uses 2D template with p1=4, p2=4.
-
+# C5 x C5 has order 25. Uses 2D template with p1=5, p2=5.
+#
 data:
   group_name: cnxcn           # Group family: 'cn' | 'cnxcn' | 'dihedral' | 'octahedral' | 'A5'
-  p1: 4                       # First cyclic group order / template height (cnxcn only)
-  p2: 4                       # Second cyclic group order / template width (cnxcn only)
-  k: 3                        # Sequence length (number of group elements to compose)
+  p1: 5                       # First cyclic group order / template height (cnxcn only)
+  p2: 5                       # Second cyclic group order / template width (cnxcn only)
+  k: 2                        # Sequence length (number of group elements to compose)
   batch_size: 128             # Training batch size
   seed: 10                    # Random seed for reproducibility
   template_type: custom_fourier  # Template type: 'mnist' | 'custom_fourier'
-  powers: [100.0]             # Desired power per 2D Fourier mode (modes: (1,0))
+  # Desired power per 2D Fourier mode (modes: (1,0), (0,1), (1,1), (2,0), (0,2))
+  powers: [200.0, 100.0, 50.0, 10.0, 5.0]
   mode: exhaustive            # Dataset mode: 'sampled' | 'exhaustive'
   num_samples: 1000           # Number of samples (used when mode='sampled')
 
 model:
-  model_type: SequentialMLP   # Model architecture: 'QuadraticRNN' | 'SequentialMLP' | 'TwoLayerNet'
-  hidden_dim: 480             # Hidden layer width (hidden_factor=30 * group_size=16)
-  init_scale: 0.01            # Weight initialization scale
+  model_type: TwoLayerNet     # Model architecture: 'QuadraticRNN' | 'SequentialMLP' | 'TwoLayerNet'
+  hidden_dim: 300             # Hidden layer width (hidden_factor=20 * group_size=25)
+  init_scale: 0.0001          # Weight initialization scale
+  nonlinearity: square        # Activation function (TwoLayerNet only): 'square' | ...
+  output_scale: 1.0           # Output layer scaling factor (TwoLayerNet only)
   return_all_outputs: false   # true = seq-to-seq, false = seq-to-one (final output only)
   transform_type: quadratic   # Transform type (QuadraticRNN only): 'quadratic' | 'multiplicative'
 
 training:
   mode: offline               # Training mode: 'online' (fresh samples) | 'offline' (fixed dataset)
-  epochs: 1000                # Number of training epochs (offline mode)
+  epochs: 100000               # Number of training epochs (offline mode)
   num_steps: 100              # Number of training steps (online mode)
   optimizer: per_neuron       # Optimizer: 'adam' | 'hybrid' | 'per_neuron'
-  learning_rate: 0.01         # Base learning rate
+  learning_rate: 0.005        # Base learning rate
   betas: [0.9, 0.999]        # Adam/hybrid beta parameters
   weight_decay: 0.0           # L2 regularization strength
   degree: null                # Homogeneity degree for 'per_neuron' (null = auto-infer)
   scaling_factor: -3          # Per-neuron norm exponent for 'hybrid' optimizer only
   grad_clip: 0.1              # Maximum gradient norm (0 = disabled)
-  verbose_interval: 100       # Print loss every N epochs/steps
-  save_param_interval: 10     # Save parameter snapshot every N epochs/steps
+  verbose_interval: 400       # Print loss every N epochs/steps
+  save_param_interval: 1      # Save parameter snapshot every N epochs/steps
   reduction_threshold: null   # Early stopping: stop at this loss-reduction fraction (null = disabled)
 
 device: cuda:0                # Device: 'cuda:N' | 'cpu'

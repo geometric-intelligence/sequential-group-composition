@@ -14,7 +14,6 @@ from torch import nn, optim
 from torch.utils.data import DataLoader
 
 import src.dataset as dataset
-import src.fourier as fourier
 import src.model as model
 import src.optimizer as optimizer
 import src.power as power
@@ -93,7 +92,7 @@ def save_results(
     return metadata
 
 
-def produce_plots_2d(
+def produce_plots_cnxcn(
     run_dir: Path,
     config: dict,
     model,
@@ -131,6 +130,7 @@ def produce_plots_2d(
     plots = config.get("analysis", {}).get("plots", {})
     plot_training_loss = plots.get("training_loss", True)
     plot_predictions = plots.get("predictions", True)
+    plot_power_spectrum = plots.get("power_spectrum", True)
     plot_wmix = plots.get("wmix", True)
 
     ### ----- COMPUTE X-AXIS VALUES ----- ###
@@ -165,18 +165,32 @@ def produce_plots_2d(
 
     ### ----- GENERATE EVALUATION DATA ----- ###
     print("Generating evaluation data for visualization...")
-    X_seq_2d, Y_seq_2d, _ = dataset.OnlineModularAdditionDataset2D.generate_dataset(
-        config["data"]["p1"],
-        config["data"]["p2"],
-        template_2d,
-        config["data"]["k"],
-        mode="sampled",
-        num_samples=min(config["data"]["num_samples"], 1000),
-        return_all_outputs=config["model"]["return_all_outputs"],
-    )
-    X_seq_2d_t = torch.tensor(X_seq_2d, dtype=torch.float32, device=device)
-    Y_seq_2d_t = torch.tensor(Y_seq_2d, dtype=torch.float32, device=device)
-    print(f"  Generated {X_seq_2d_t.shape[0]} samples for visualization")
+    model_type = config["model"]["model_type"]
+
+    if model_type == "TwoLayerNet":
+        eval_ds_2d, _ = dataset.OfflineModularCompositionDataset.from_cnxcn(
+            config["data"]["p1"],
+            config["data"]["p2"],
+            template_2d,
+            k=2,
+            mode="exhaustive",
+        )
+        N_eval = len(eval_ds_2d)
+        X_eval_2d_t = eval_ds_2d.X.reshape(N_eval, -1).to(device)
+        Y_eval_2d_t = eval_ds_2d.Y.to(device)
+    else:
+        eval_ds_2d, _ = dataset.OfflineModularCompositionDataset.from_cnxcn(
+            config["data"]["p1"],
+            config["data"]["p2"],
+            template_2d,
+            config["data"]["k"],
+            mode="sampled",
+            num_samples=min(config["data"]["num_samples"], 1000),
+            return_all_outputs=config["model"]["return_all_outputs"],
+        )
+        X_eval_2d_t = eval_ds_2d.X.to(device)
+        Y_eval_2d_t = eval_ds_2d.Y.to(device)
+    print(f"  Generated {len(eval_ds_2d)} samples for visualization")
 
     ### ----- COMPUTE CHECKPOINT INDICES ----- ###
     total_checkpoints = len(param_hist)
@@ -228,14 +242,50 @@ def produce_plots_2d(
             show=False,
         )
 
+        # Plot 4: 2x2 grid (Linear, Log Y, Log X, Log-Log)
+        x_values = steps if training_mode == "online" else epochs
+        _, axes = plt.subplots(2, 2, figsize=(12, 10))
+        scale_configs = [
+            ("linear", "linear", "Linear Scale"),
+            ("linear", "log", "Log Y"),
+            ("log", "linear", "Log X"),
+            ("log", "log", "Log-Log"),
+        ]
+        for ax, (xscale, yscale, title) in zip(axes.flat, scale_configs):
+            ax.plot(x_values, train_loss_hist, lw=2, color="#1f77b4")
+            ax.set_xscale(xscale)
+            ax.set_yscale(yscale)
+            ax.set_xlabel(x_label_steps)
+            ax.set_ylabel("Training Loss")
+            ax.set_title(title)
+            ax.grid(True, alpha=0.3)
+            if yscale == "log":
+                ax.set_ylim(bottom=1.0)
+
+        p1 = config["data"]["p1"]
+        p2 = config["data"]["p2"]
+        group_label = f"C{p1}\u00d7C{p2}"
+        lr = config["training"]["learning_rate"]
+        hidden_dim = config["model"]["hidden_dim"]
+        init_scale = config["model"]["init_scale"]
+        plt.suptitle(
+            f"{group_label} Composition (k={k}, lr={lr}, h={hidden_dim}, init={init_scale:.0e})",
+            fontsize=14,
+        )
+        plt.tight_layout()
+        training_loss_path = os.path.join(run_dir, "training_loss.pdf")
+        plt.savefig(training_loss_path, bbox_inches="tight", dpi=150)
+        plt.close()
+        print(f"  \u2713 Saved {training_loss_path}")
+
     ### ----- PLOT MODEL PREDICTIONS ----- ###
-    if plot_predictions:
+    if plot_predictions and model_type != "TwoLayerNet":
         print("Plotting model predictions over time...")
         viz.plot_predictions_2d(
             model,
             param_hist,
-            X_seq_2d_t,
-            Y_seq_2d_t,
+            X_eval_2d_t,
+            Y_eval_2d_t,
             config["data"]["p1"],
             config["data"]["p2"],
             steps=checkpoint_indices,
@@ -243,8 +293,54 @@ def produce_plots_2d(
             show=False,
         )
 
+    ### ----- PLOT POWER SPECTRUM ANALYSIS ----- ###
+    power_data = None
+    if plot_power_spectrum:
+        print("Plotting power spectrum over time...")
+        p1 = config["data"]["p1"]
+        p2 = config["data"]["p2"]
+        optimizer_name = config["training"]["optimizer"]
+        init_scale = config["model"]["init_scale"]
+        group_label = f"C{p1}\u00d7C{p2}"
+        power_data = viz.plot_power_cnxcn(
+            model=model,
+            param_hist=param_hist,
+            param_save_indices=param_save_indices,
+            X_eval=X_eval_2d_t,
+            template_2d=template_2d,
+            p1=p1,
+            p2=p2,
+            k=k,
+            optimizer=optimizer_name,
+            init_scale=init_scale,
+            save_path=os.path.join(run_dir, "power_spectrum_analysis.pdf"),
+            group_label=group_label,
+            learning_rate=config["training"]["learning_rate"],
+            hidden_dim=config["model"]["hidden_dim"],
+        )
+
+    ### ----- PLOT COMBINED LOSS AND POWER ----- ###
+    if plot_training_loss and power_data is not None:
+        print("\nPlotting combined loss and power...")
+        x_values = steps if training_mode == "online" else epochs
+        p1 = config["data"]["p1"]
+        p2 = config["data"]["p2"]
+        group_label = f"C{p1}\u00d7C{p2}"
+        viz.plot_loss_and_power(
+            x_values=x_values,
+            train_loss_hist=train_loss_hist,
+            x_label=x_label_steps,
+            power_data=power_data,
+            save_path=os.path.join(run_dir, "loss_and_power.pdf"),
+            title=(
+                f"{group_label} Training"
+                f" (k={k}, lr={config['training']['learning_rate']},"
+                f" init={config['model']['init_scale']:.0e},"
+                f" h={config['model']['hidden_dim']}, {config['training']['optimizer']})"
+            ),
+        )
+
     ### ----- PLOT W_MIX FREQUENCY STRUCTURE (QuadraticRNN only) ----- ###
-    model_type = config["model"]["model_type"]
     if plot_wmix and model_type == "QuadraticRNN":
         print("Creating Fourier modes reference...")
         tracked_freqs = power.topk_template_freqs(template_2d, K=10)
@@ -268,7 +364,7 @@ def produce_plots_2d(
     print("\n✓ All plots generated successfully!")
 
 
-def produce_plots_1d(
+def produce_plots_cn(
     run_dir: Path,
     config: dict,
     model,
@@ -333,13 +429,18 @@ def produce_plots_1d(
     print("Generating evaluation data for visualization...")
 
     if use_group_style:
-        X_raw, Y_raw = dataset.cn_dataset(template_1d)
-        X_eval_t, Y_eval_t, device = dataset.move_dataset_to_device_and_flatten(
-            X_raw, Y_raw, device=device
+        eval_ds, _ = dataset.OfflineModularCompositionDataset.from_cn(
+            config["data"]["p"],
+            template_1d,
+            k=2,
+            mode="exhaustive",
         )
-        print(f"  Generated {X_eval_t.shape[0]} samples for visualization")
+        N_eval = len(eval_ds)
+        X_eval_t = eval_ds.X.reshape(N_eval, -1).to(device)
+        Y_eval_t = eval_ds.Y.to(device)
+        print(f"  Generated {N_eval} samples for visualization")
     else:
-        X_seq_1d, Y_seq_1d, _ = dataset.OnlineModularAdditionDataset1D.generate_dataset(
+        eval_ds_1d, _ = dataset.OfflineModularCompositionDataset.from_cn(
             config["data"]["p"],
             template_1d,
             config["data"]["k"],
@@ -347,9 +448,9 @@ def produce_plots_1d(
             num_samples=min(config["data"]["num_samples"], 1000),
             return_all_outputs=config["model"]["return_all_outputs"],
         )
-        X_seq_1d_t = torch.tensor(X_seq_1d, dtype=torch.float32, device=device)
-        Y_seq_1d_t = torch.tensor(Y_seq_1d, dtype=torch.float32, device=device)
-        print(f"  Generated {X_seq_1d_t.shape[0]} samples for visualization")
+        X_seq_1d_t = eval_ds_1d.X.to(device)
+        Y_seq_1d_t = eval_ds_1d.Y.to(device)
+        print(f"  Generated {len(eval_ds_1d)} samples for visualization")
 
     ### ----- COMPUTE CHECKPOINT INDICES ----- ###
     total_checkpoints = len(param_hist)
@@ -417,45 +518,66 @@ def produce_plots_1d(
             )
 
     ### ----- PLOT POWER SPECTRUM ANALYSIS ----- ###
+    power_data = None
     if plot_power_spectrum:
         print("Plotting power spectrum over time...")
 
-    if use_group_style:
-        optimizer_name = config["training"]["optimizer"]
-        init_scale = config["model"]["init_scale"]
-        viz.plot_power_cn(
-            model=model,
-            param_hist=param_hist,
-            param_save_indices=param_save_indices,
-            X_eval=X_eval_t,
-            template_1d=template_1d,
-            p=p,
-            k=k,
-            optimizer=optimizer_name,
-            init_scale=init_scale,
-            save_path=os.path.join(run_dir, "power_spectrum_analysis.pdf"),
-            group_label=f"C{p}",
-            learning_rate=config["training"]["learning_rate"],
-            hidden_dim=config["model"]["hidden_dim"],
-        )
-    else:
-        viz.plot_power_1d(
-            model,
-            param_hist,
-            X_seq_1d_t,
-            Y_seq_1d_t,
-            template_1d,
-            p,
-            loss_history=train_loss_hist,
-            param_save_indices=param_save_indices,
-            num_freqs_to_track=min(10, p // 4),
-            checkpoint_indices=checkpoint_indices,
-            num_samples=100,
-            save_path=os.path.join(run_dir, "power_spectrum_analysis.pdf"),
-            show=False,
+        if use_group_style:
+            optimizer_name = config["training"]["optimizer"]
+            init_scale = config["model"]["init_scale"]
+            group_label = f"C{p}"
+            power_data = viz.plot_power_cn(
+                model=model,
+                param_hist=param_hist,
+                param_save_indices=param_save_indices,
+                X_eval=X_eval_t,
+                template_1d=template_1d,
+                p=p,
+                k=k,
+                optimizer=optimizer_name,
+                init_scale=init_scale,
+                save_path=os.path.join(run_dir, "power_spectrum_analysis.pdf"),
+                group_label=group_label,
+                learning_rate=config["training"]["learning_rate"],
+                hidden_dim=config["model"]["hidden_dim"],
+            )
+        else:
+            viz.plot_power_1d(
+                model,
+                param_hist,
+                X_seq_1d_t,
+                Y_seq_1d_t,
+                template_1d,
+                p,
+                loss_history=train_loss_hist,
+                param_save_indices=param_save_indices,
+                num_freqs_to_track=min(10, p // 4),
+                checkpoint_indices=checkpoint_indices,
+                num_samples=100,
+                save_path=os.path.join(run_dir, "power_spectrum_analysis.pdf"),
+                show=False,
+            )
+
+    ### ----- PLOT COMBINED LOSS AND POWER ----- ###
+    if plot_training_loss and power_data is not None:
+        print("\nPlotting combined loss and power...")
+        x_values = steps if training_mode == "online" else epochs
+        group_label = f"C{p}"
+        viz.plot_loss_and_power(
+            x_values=x_values,
+            train_loss_hist=train_loss_hist,
+            x_label=x_label_steps,
+            power_data=power_data,
+            save_path=os.path.join(run_dir, "loss_and_power.pdf"),
+            title=(
+                f"{group_label} Training"
+                f" (k={k}, lr={config['training']['learning_rate']},"
+                f" init={config['model']['init_scale']:.0e},"
+                f" h={config['model']['hidden_dim']}, {config['training']['optimizer']})"
+            ),
         )
 
-    print(f"\n✓ All C{p} plots generated successfully!")
+    print(f"\n\u2713 All C{p} plots generated successfully!")
 
 
 def produce_plots_group(
@@ -546,10 +668,15 @@ def produce_plots_group(
 
     if model_type == "TwoLayerNet":
         # TwoLayerNet expects flattened binary pair input: (N, 2*group_size)
-        X_raw, Y_raw = dataset.group_dataset(group, template)
-        X_eval_t, Y_eval_t, device = dataset.move_dataset_to_device_and_flatten(
-            X_raw, Y_raw, device=device
+        eval_ds, _ = dataset.OfflineModularCompositionDataset.from_group(
+            template,
+            k=2,
+            group=group,
+            mode="exhaustive",
         )
+        N_eval = len(eval_ds)
+        X_eval_t = eval_ds.X.reshape(N_eval, -1).to(device)
+        Y_eval_t = eval_ds.Y.to(device)
         # Optionally subsample for visualization
         n_eval = min(len(X_eval_t), 1000)
         if n_eval < len(X_eval_t):
@@ -558,7 +685,7 @@ def produce_plots_group(
             Y_eval_t = Y_eval_t[indices]
     else:
         # Sequence models use the generic sequence dataset
-        X_eval, Y_eval, _ = dataset.build_modular_addition_sequence_dataset_generic(
+        eval_ds, _ = dataset.OfflineModularCompositionDataset.from_group(
             template,
             k,
             group=group,
@@ -566,8 +693,8 @@ def produce_plots_group(
             num_samples=min(config["data"]["num_samples"], 1000),
             return_all_outputs=config["model"]["return_all_outputs"],
         )
-        X_eval_t = torch.tensor(X_eval, dtype=torch.float32, device=device)
-        Y_eval_t = torch.tensor(Y_eval, dtype=torch.float32, device=device)
+        X_eval_t = eval_ds.X.to(device)
+        Y_eval_t = eval_ds.Y.to(device)
 
     print(f"  Generated {X_eval_t.shape[0]} samples for visualization")
 
@@ -711,27 +838,15 @@ def train_single_run(config: dict, run_dir: Path = None) -> dict:
 
         if template_type == "mnist":
             template_1d = template.mnist_1d(p, config["data"]["mnist_label"], root="data")
-        elif template_type == "fourier":
-            n_freqs = config["data"]["n_freqs"]
-            template_1d = template.fourier_1d(p, n_freqs=n_freqs, seed=config["data"]["seed"])
         elif template_type == "gaussian":
             template_1d = template.gaussian_1d(p, n_gaussians=3, seed=config["data"]["seed"])
         elif template_type == "onehot":
             template_1d = template.onehot_1d(p)
         elif template_type == "custom_fourier":
             powers = config["data"]["powers"]
-            n_modes = (p + 1) // 2 if p % 2 == 1 else p // 2 + 1
-            assert len(powers) == n_modes, (
-                f"powers length {len(powers)} must equal number of frequency modes {n_modes} for p={p}"
-            )
-            fourier_coef_mags = [0.0]  # DC component
-            for k_mode in range(1, len(powers)):
-                mag = np.sqrt(powers[k_mode] * p / 2.0)
-                fourier_coef_mags.append(mag)
             print("Template type: custom_fourier")
             print(f"Desired powers (per freq mode): {powers}")
-            print(f"Fourier coef magnitudes: {fourier_coef_mags}")
-            template_1d = template.fixed_cn(p, fourier_coef_mags)
+            template_1d = template.fixed_cn(p, powers)
         else:
             raise ValueError(f"Unknown template_type: {template_type}")
 
@@ -759,11 +874,13 @@ def train_single_run(config: dict, run_dir: Path = None) -> dict:
 
         if template_type == "mnist":
             template_2d = template.mnist_2d(p1, p2, config["data"]["mnist_label"], root="data")
-        elif template_type == "fourier":
-            n_freqs = config["data"]["n_freqs"]
-            template_2d = template.unique_freqs_2d(
-                p1, p2, n_freqs=n_freqs, seed=config["data"]["seed"]
-            )
+        elif template_type == "custom_fourier":
+            assert p1 == p2, f"custom_fourier for cnxcn requires p1 == p2, got p1={p1}, p2={p2}"
+            powers = config["data"]["powers"]
+            print("Template type: custom_fourier")
+            print(f"Desired powers (per 2D mode): {powers}")
+            tpl_flat = template.fixed_cnxcn(p1, p2, powers)
+            template_2d = tpl_flat.reshape(p1, p2)
         else:
             raise ValueError(f"Unknown template_type for cnxcn: {template_type}")
 
@@ -811,36 +928,9 @@ def train_single_run(config: dict, run_dir: Path = None) -> dict:
 
         elif template_type == "custom_fourier":
             powers = config["data"]["powers"]
-            irreps = group.irreps()
-            irrep_dims = [ir.size for ir in irreps]
-
-            assert len(powers) == len(irreps), (
-                f"powers must have {len(irreps)} values (one per irrep), got {len(powers)}"
-            )
-
-            fourier_coef_diag_values = [
-                np.sqrt(group_order * p / dim**2) if p > 0 else 0.0
-                for p, dim in zip(powers, irrep_dims)
-            ]
-
             print("Template type: custom_fourier")
             print(f"Desired powers (per irrep): {powers}")
-            print(f"Fourier coef diagonal values: {fourier_coef_diag_values}")
-
-            spectrum = []
-            for i, irrep in enumerate(irreps):
-                diag_val = fourier_coef_diag_values[i]
-                diag_values = np.full(irrep.size, diag_val, dtype=float)
-                mat = np.zeros((irrep.size, irrep.size), dtype=float)
-                np.fill_diagonal(mat, diag_values)
-                print(
-                    f"  Irrep {i} (dim={irrep.size}): diag_value = {diag_val:.4f} -> power = {powers[i]}"
-                )
-                spectrum.append(mat)
-
-            tpl = fourier.group_fourier_inverse(group, spectrum)
-            tpl = tpl - np.mean(tpl)
-            tpl = tpl.astype(np.float32)
+            tpl = template.fixed_group(group, powers)
         else:
             raise ValueError(
                 f"Unknown template_type for {group_name}: {template_type}. "
@@ -1041,21 +1131,35 @@ def train_single_run(config: dict, run_dir: Path = None) -> dict:
         from torch.utils.data import TensorDataset
 
         if model_type == "TwoLayerNet":
-            # TwoLayerNet uses binary pair datasets from src/datamodule.py
-            # Data shape: X=(N, 2, group_size) -> flattened to (N, 2*group_size), Y=(N, group_size)
+            # TwoLayerNet: X=(N, k, group_size) -> flattened to (N, k*group_size)
             if group_name == "cn":
-                X_raw, Y_raw = dataset.cn_dataset(tpl)
+                pair_ds, _ = dataset.OfflineModularCompositionDataset.from_cn(
+                    config["data"]["p"],
+                    tpl,
+                    k=config["data"]["k"],
+                    mode="exhaustive",
+                )
             elif group_name == "cnxcn":
-                X_raw, Y_raw = dataset.cnxcn_dataset(tpl)
+                pair_ds, _ = dataset.OfflineModularCompositionDataset.from_cnxcn(
+                    config["data"]["p1"],
+                    config["data"]["p2"],
+                    tpl,
+                    k=config["data"]["k"],
+                    mode="exhaustive",
+                )
             elif group_name in ("dihedral", "octahedral", "A5"):
-                X_raw, Y_raw = dataset.group_dataset(group, tpl)
+                pair_ds, _ = dataset.OfflineModularCompositionDataset.from_group(
+                    tpl,
+                    k=config["data"]["k"],
+                    group=group,
+                    mode="exhaustive",
+                )
             else:
                 raise ValueError(f"Unsupported group_name for TwoLayerNet: {group_name}")
 
-            # Flatten X from (N, 2, group_size) to (N, 2*group_size) and convert to tensors
-            X_all, Y_all, device = dataset.move_dataset_to_device_and_flatten(
-                X_raw, Y_raw, device=device
-            )
+            N_all = len(pair_ds)
+            X_all = pair_ds.X.reshape(N_all, -1).to(device)
+            Y_all = pair_ds.Y.to(device)
 
             # Apply dataset_fraction if configured
             dataset_fraction = config["data"].get("dataset_fraction", 1.0)
@@ -1076,8 +1180,7 @@ def train_single_run(config: dict, run_dir: Path = None) -> dict:
         else:
             # Sequence models (QuadraticRNN, SequentialMLP) use sequence datasets
             if group_name == "cn":
-                # Generate training dataset
-                X_train, Y_train, _ = dataset.OnlineModularAdditionDataset1D.generate_dataset(
+                train_ds, _ = dataset.OfflineModularCompositionDataset.from_cn(
                     config["data"]["p"],
                     template_1d,
                     config["data"]["k"],
@@ -1086,9 +1189,8 @@ def train_single_run(config: dict, run_dir: Path = None) -> dict:
                     return_all_outputs=config["model"]["return_all_outputs"],
                 )
 
-                # Generate validation dataset
                 val_samples = max(1000, config["data"]["num_samples"] // 10)
-                X_val, Y_val, _ = dataset.OnlineModularAdditionDataset1D.generate_dataset(
+                val_ds, _ = dataset.OfflineModularCompositionDataset.from_cn(
                     config["data"]["p"],
                     template_1d,
                     config["data"]["k"],
@@ -1097,8 +1199,7 @@ def train_single_run(config: dict, run_dir: Path = None) -> dict:
                     return_all_outputs=config["model"]["return_all_outputs"],
                 )
             elif group_name == "cnxcn":
-                # Generate training dataset
-                X_train, Y_train, _ = dataset.OnlineModularAdditionDataset2D.generate_dataset(
+                train_ds, _ = dataset.OfflineModularCompositionDataset.from_cnxcn(
                     config["data"]["p1"],
                     config["data"]["p2"],
                     template_2d,
@@ -1108,9 +1209,8 @@ def train_single_run(config: dict, run_dir: Path = None) -> dict:
                     return_all_outputs=config["model"]["return_all_outputs"],
                 )
 
-                # Generate validation dataset
                 val_samples = max(1000, config["data"]["num_samples"] // 10)
-                X_val, Y_val, _ = dataset.OnlineModularAdditionDataset2D.generate_dataset(
+                val_ds, _ = dataset.OfflineModularCompositionDataset.from_cnxcn(
                     config["data"]["p1"],
                     config["data"]["p2"],
                     template_2d,
@@ -1120,7 +1220,7 @@ def train_single_run(config: dict, run_dir: Path = None) -> dict:
                     return_all_outputs=config["model"]["return_all_outputs"],
                 )
             elif group_name in ("dihedral", "octahedral", "A5"):
-                X_train, Y_train, _ = dataset.build_modular_addition_sequence_dataset_generic(
+                train_ds, _ = dataset.OfflineModularCompositionDataset.from_group(
                     tpl,
                     config["data"]["k"],
                     group=group,
@@ -1130,7 +1230,7 @@ def train_single_run(config: dict, run_dir: Path = None) -> dict:
                 )
 
                 val_samples = max(1000, config["data"]["num_samples"] // 10)
-                X_val, Y_val, _ = dataset.build_modular_addition_sequence_dataset_generic(
+                val_ds, _ = dataset.OfflineModularCompositionDataset.from_group(
                     tpl,
                     config["data"]["k"],
                     group=group,
@@ -1143,10 +1243,10 @@ def train_single_run(config: dict, run_dir: Path = None) -> dict:
                     f"group_name must be 'cn', 'cnxcn', 'dihedral', 'octahedral', or 'A5', got {group_name}"
                 )
 
-            X_train_t = torch.tensor(X_train, dtype=torch.float32, device=device)
-            Y_train_t = torch.tensor(Y_train, dtype=torch.float32, device=device)
-            X_val_t = torch.tensor(X_val, dtype=torch.float32, device=device)
-            Y_val_t = torch.tensor(Y_val, dtype=torch.float32, device=device)
+            X_train_t = train_ds.X.to(device)
+            Y_train_t = train_ds.Y.to(device)
+            X_val_t = val_ds.X.to(device)
+            Y_val_t = val_ds.Y.to(device)
 
         train_dataset = TensorDataset(X_train_t, Y_train_t)
         val_dataset = TensorDataset(X_val_t, Y_val_t)
@@ -1238,7 +1338,7 @@ def train_single_run(config: dict, run_dir: Path = None) -> dict:
     ### ----- PRODUCE ALL PLOTS ----- ###
     if group_name == "cnxcn":
         # Produce detailed plots for 2D
-        produce_plots_2d(
+        produce_plots_cnxcn(
             run_dir=run_dir,
             config=config,
             model=rnn_2d,
@@ -1251,7 +1351,7 @@ def train_single_run(config: dict, run_dir: Path = None) -> dict:
         )
     elif group_name == "cn":
         # Produce detailed plots for 1D
-        produce_plots_1d(
+        produce_plots_cn(
             run_dir=run_dir,
             config=config,
             model=rnn_2d,

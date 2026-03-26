@@ -118,12 +118,14 @@ def _add_line_labels(ax, lines_info, fontsize=12):
         y_arr = np.asarray(info["y"])
         if len(x_arr) == 0:
             continue
-        label_data.append({
-            "x_pos": x_arr[-1],
-            "y_pos": y_arr[-1],
-            "label": info["label"],
-            "color": info["color"],
-        })
+        label_data.append(
+            {
+                "x_pos": x_arr[-1],
+                "y_pos": y_arr[-1],
+                "label": info["label"],
+                "color": info["color"],
+            }
+        )
 
     if not label_data:
         return
@@ -137,10 +139,7 @@ def _add_line_labels(ax, lines_info, fontsize=12):
         log_lo = np.log10(max(y_lo, 1e-30))
         log_hi = np.log10(max(y_hi, 1e-30))
         span = max(log_hi - log_lo, 1e-30)
-        fracs = [
-            (np.log10(max(d["y_pos"], 1e-30)) - log_lo) / span
-            for d in label_data
-        ]
+        fracs = [(np.log10(max(d["y_pos"], 1e-30)) - log_lo) / span for d in label_data]
     else:
         span = max(y_hi - y_lo, 1e-30)
         fracs = [(d["y_pos"] - y_lo) / span for d in label_data]
@@ -660,7 +659,7 @@ def plot_power_cn(
     top_mode_indices = top_mode_indices[top_mode_indices != 0]
 
     _cn_power_colors = ["#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b"]
-    colors_line = _cn_power_colors[:len(top_mode_indices)]
+    colors_line = _cn_power_colors[: len(top_mode_indices)]
 
     valid_mask = np.array(epoch_numbers) > 0
     valid_epochs = np.array(epoch_numbers)[valid_mask]
@@ -676,10 +675,14 @@ def plot_power_cn(
         power_values = model_powers[:, mode_idx]
         ax.plot(epoch_numbers, power_values, "-", lw=2, color=colors_line[i])
         ax.axhline(template_power[mode_idx], linestyle="dotted", alpha=0.5, color=colors_line[i])
-        lines_info.append({
-            "x": epoch_numbers, "y": power_values,
-            "label": _mode_label(mode_idx), "color": colors_line[i],
-        })
+        lines_info.append(
+            {
+                "x": epoch_numbers,
+                "y": power_values,
+                "label": _mode_label(mode_idx),
+                "color": colors_line[i],
+            }
+        )
     ax.set_xlabel("Epoch")
     ax.set_ylabel("Power")
     ax.set_title("Linear Scales", fontsize=12)
@@ -693,10 +696,14 @@ def plot_power_cn(
         power_values = valid_model_powers[:, mode_idx]
         ax.plot(valid_epochs, power_values, "-", lw=2, color=colors_line[i])
         ax.axhline(template_power[mode_idx], linestyle="dotted", alpha=0.5, color=colors_line[i])
-        lines_info.append({
-            "x": valid_epochs, "y": power_values,
-            "label": _mode_label(mode_idx), "color": colors_line[i],
-        })
+        lines_info.append(
+            {
+                "x": valid_epochs,
+                "y": power_values,
+                "label": _mode_label(mode_idx),
+                "color": colors_line[i],
+            }
+        )
     ax.set_xscale("log")
     ax.set_xlabel("Epoch (log scale)")
     ax.set_ylabel("Power")
@@ -714,10 +721,14 @@ def plot_power_cn(
             x_data = valid_epochs[power_mask]
             y_data = power_values[power_mask]
             ax.plot(x_data, y_data, "-", lw=2, color=colors_line[i])
-            lines_info.append({
-                "x": x_data, "y": y_data,
-                "label": _mode_label(mode_idx), "color": colors_line[i],
-            })
+            lines_info.append(
+                {
+                    "x": x_data,
+                    "y": y_data,
+                    "label": _mode_label(mode_idx),
+                    "color": colors_line[i],
+                }
+            )
         if template_power[mode_idx] > 0:
             ax.axhline(
                 template_power[mode_idx], linestyle="dotted", alpha=0.5, color=colors_line[i]
@@ -745,6 +756,161 @@ def plot_power_cn(
     if save_path:
         plt.savefig(save_path, bbox_inches="tight", dpi=150)
         print(f"  ✓ Saved {save_path}")
+    plt.close()
+
+    labels = [_mode_label(idx) for idx in top_mode_indices]
+    return {
+        "valid_epochs": valid_epochs,
+        "valid_model_powers": valid_model_powers,
+        "model_powers": model_powers,
+        "epoch_numbers": epoch_numbers,
+        "template_power": template_power,
+        "top_irrep_indices": top_mode_indices,
+        "colors_line": colors_line,
+        "labels": labels,
+    }
+
+
+def plot_power_cnxcn(
+    model,
+    param_hist,
+    param_save_indices,
+    X_eval,
+    template_2d: np.ndarray,
+    p1: int,
+    p2: int,
+    k: int,
+    optimizer: str,
+    init_scale: float,
+    save_path: str = None,
+    group_label: str = "Group",
+    learning_rate: float = None,
+    hidden_dim: int = None,
+):
+    """Plot power spectrum of model outputs vs template for CnxCn group.
+
+    Mirrors plot_power_cn but uses 2D CyclicPower (rfft2).
+    Each 2D frequency mode (u, v) is tracked separately.
+    """
+    import src.power as power
+
+    template_power_obj = power.CyclicPower(template_2d.flatten(), template_dim=2)
+    template_power_2d = template_power_obj.power  # (p1, p2//2+1)
+    template_power = template_power_2d.flatten()
+    n_modes = len(template_power)
+    n_cols = p2 // 2 + 1
+
+    print(f"  Template 2D power spectrum shape: {template_power_2d.shape}")
+
+    model_powers, steps = power.model_power_over_time("cnxcn", model, param_hist, X_eval)
+    epoch_numbers = [param_save_indices[min(s, len(param_save_indices) - 1)] for s in steps]
+
+    top_k = min(5, n_modes)
+    top_mode_indices = np.argsort(template_power)[::-1][:top_k]
+    top_mode_indices = top_mode_indices[top_mode_indices != 0]
+
+    _cnxcn_power_colors = ["#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b"]
+    colors_line = _cnxcn_power_colors[: len(top_mode_indices)]
+
+    valid_mask = np.array(epoch_numbers) > 0
+    valid_epochs = np.array(epoch_numbers)[valid_mask]
+    valid_model_powers = model_powers[valid_mask, :]
+
+    def _mode_label(idx):
+        u = idx // n_cols
+        v = idx % n_cols
+        return rf"$({u},\,{v})$"
+
+    fig, axes = plt.subplots(1, 3, figsize=(18, 5))
+
+    # Plot 1: Linear scales
+    ax = axes[0]
+    lines_info = []
+    for i, mode_idx in enumerate(top_mode_indices):
+        power_values = model_powers[:, mode_idx]
+        ax.plot(epoch_numbers, power_values, "-", lw=2, color=colors_line[i])
+        ax.axhline(template_power[mode_idx], linestyle="dotted", alpha=0.5, color=colors_line[i])
+        lines_info.append(
+            {
+                "x": epoch_numbers,
+                "y": power_values,
+                "label": _mode_label(mode_idx),
+                "color": colors_line[i],
+            }
+        )
+    ax.set_xlabel("Epoch")
+    ax.set_ylabel("Power")
+    ax.set_title("Linear Scales", fontsize=12)
+    _add_line_labels(ax, lines_info)
+    ax.grid(True, alpha=0.3)
+
+    # Plot 2: Log x-axis only
+    ax = axes[1]
+    lines_info = []
+    for i, mode_idx in enumerate(top_mode_indices):
+        power_values = valid_model_powers[:, mode_idx]
+        ax.plot(valid_epochs, power_values, "-", lw=2, color=colors_line[i])
+        ax.axhline(template_power[mode_idx], linestyle="dotted", alpha=0.5, color=colors_line[i])
+        lines_info.append(
+            {
+                "x": valid_epochs,
+                "y": power_values,
+                "label": _mode_label(mode_idx),
+                "color": colors_line[i],
+            }
+        )
+    ax.set_xscale("log")
+    ax.set_xlabel("Epoch (log scale)")
+    ax.set_ylabel("Power")
+    ax.set_title("Log X-axis", fontsize=12)
+    _add_line_labels(ax, lines_info)
+    ax.grid(True, alpha=0.3)
+
+    # Plot 3: Log-log scales
+    ax = axes[2]
+    lines_info = []
+    for i, mode_idx in enumerate(top_mode_indices):
+        power_values = valid_model_powers[:, mode_idx]
+        power_mask = power_values > 0
+        if np.any(power_mask):
+            x_data = valid_epochs[power_mask]
+            y_data = power_values[power_mask]
+            ax.plot(x_data, y_data, "-", lw=2, color=colors_line[i])
+            lines_info.append(
+                {
+                    "x": x_data,
+                    "y": y_data,
+                    "label": _mode_label(mode_idx),
+                    "color": colors_line[i],
+                }
+            )
+        if template_power[mode_idx] > 0:
+            ax.axhline(
+                template_power[mode_idx], linestyle="dotted", alpha=0.5, color=colors_line[i]
+            )
+    ax.set_xscale("log")
+    ax.set_yscale("log")
+    ax.set_xlabel("Epoch (log scale)")
+    ax.set_ylabel("Power (log scale)")
+    ax.set_title("Log-Log Scales", fontsize=12)
+    _add_line_labels(ax, lines_info)
+    ax.grid(True, alpha=0.3)
+
+    title_parts = [
+        f"{group_label} Power Evolution Over Training (k={k}, {optimizer}, init={init_scale:.0e}"
+    ]
+    if learning_rate is not None:
+        title_parts.append(f", lr={learning_rate}")
+    if hidden_dim is not None:
+        title_parts.append(f", h={hidden_dim}")
+    title_parts.append(")")
+    fig.suptitle("".join(title_parts), fontsize=14, fontweight="bold")
+
+    plt.tight_layout()
+
+    if save_path:
+        plt.savefig(save_path, bbox_inches="tight", dpi=150)
+        print(f"  \u2713 Saved {save_path}")
     plt.close()
 
     labels = [_mode_label(idx) for idx in top_mode_indices]
@@ -1035,7 +1201,7 @@ def plot_power_group(
     top_irrep_indices = top_irrep_indices[top_irrep_indices != 0]
 
     _group_power_colors = ["#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b"]
-    colors_line = _group_power_colors[:len(top_irrep_indices)]
+    colors_line = _group_power_colors[: len(top_irrep_indices)]
 
     valid_mask = np.array(epoch_numbers) > 0
     valid_epochs = np.array(epoch_numbers)[valid_mask]
@@ -1053,10 +1219,14 @@ def plot_power_group(
         power_values = model_powers[:, irrep_idx]
         ax.plot(epoch_numbers, power_values, "-", lw=2, color=colors_line[i])
         ax.axhline(template_power[irrep_idx], linestyle="--", alpha=0.5, color=colors_line[i])
-        lines_info.append({
-            "x": epoch_numbers, "y": power_values,
-            "label": _irrep_label(irrep_idx, irreps), "color": colors_line[i],
-        })
+        lines_info.append(
+            {
+                "x": epoch_numbers,
+                "y": power_values,
+                "label": _irrep_label(irrep_idx, irreps),
+                "color": colors_line[i],
+            }
+        )
     ax.set_xlabel("Epoch")
     ax.set_ylabel("Power")
     ax.set_title("Linear Scales", fontsize=12)
@@ -1070,10 +1240,14 @@ def plot_power_group(
         power_values = valid_model_powers[:, irrep_idx]
         ax.plot(valid_epochs, power_values, "-", lw=2, color=colors_line[i])
         ax.axhline(template_power[irrep_idx], linestyle="--", alpha=0.5, color=colors_line[i])
-        lines_info.append({
-            "x": valid_epochs, "y": power_values,
-            "label": _irrep_label(irrep_idx, irreps), "color": colors_line[i],
-        })
+        lines_info.append(
+            {
+                "x": valid_epochs,
+                "y": power_values,
+                "label": _irrep_label(irrep_idx, irreps),
+                "color": colors_line[i],
+            }
+        )
     ax.set_xscale("log")
     ax.set_xlabel("Epoch (log scale)")
     ax.set_ylabel("Power")
@@ -1091,10 +1265,14 @@ def plot_power_group(
             x_data = valid_epochs[power_mask]
             y_data = power_values[power_mask]
             ax.plot(x_data, y_data, "-", lw=2, color=colors_line[i])
-            lines_info.append({
-                "x": x_data, "y": y_data,
-                "label": _irrep_label(irrep_idx, irreps), "color": colors_line[i],
-            })
+            lines_info.append(
+                {
+                    "x": x_data,
+                    "y": y_data,
+                    "label": _irrep_label(irrep_idx, irreps),
+                    "color": colors_line[i],
+                }
+            )
         if template_power[irrep_idx] > 0:
             ax.axhline(template_power[irrep_idx], linestyle="--", alpha=0.5, color=colors_line[i])
     ax.set_xscale("log")
@@ -1155,7 +1333,10 @@ def plot_loss_and_power(
         title: optional suptitle
     """
     fig, (ax_loss, ax_power) = plt.subplots(
-        2, 1, figsize=(4, 8), sharex=True,
+        2,
+        1,
+        figsize=(4, 8),
+        sharex=True,
         gridspec_kw={"hspace": 0.10},
     )
 
@@ -1183,10 +1364,14 @@ def plot_loss_and_power(
         pv = valid_model_powers[:, idx]
         ax_power.plot(valid_epochs, pv, "-", lw=2, color=colors_line[i])
         ax_power.axhline(template_power[idx], linestyle="--", alpha=0.5, color=colors_line[i])
-        lines_info.append({
-            "x": valid_epochs, "y": pv,
-            "label": labels[i], "color": colors_line[i],
-        })
+        lines_info.append(
+            {
+                "x": valid_epochs,
+                "y": pv,
+                "label": labels[i],
+                "color": colors_line[i],
+            }
+        )
     _add_line_labels(ax_power, lines_info, fontsize=10)
 
     ax_power.set_xscale("log")
