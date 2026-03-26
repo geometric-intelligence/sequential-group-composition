@@ -171,7 +171,10 @@ class TestOfflineModularCompositionDataset:
 
         with pytest.raises(AssertionError):
             dataset.OfflineModularCompositionDataset.from_group(
-                template, k=2, group=d3_group, mode="exhaustive",
+                template,
+                k=2,
+                group=d3_group,
+                mode="exhaustive",
             )
 
     def test_from_group_getitem(self, template_d3, d3_group):
@@ -226,8 +229,12 @@ class TestOfflineModularCompositionDataset:
         num_samples = 50
 
         ds, sequence = dataset.OfflineModularCompositionDataset.from_cn(
-            p=p, template=template, k=k, mode="sampled",
-            num_samples=num_samples, return_all_outputs=True,
+            p=p,
+            template=template,
+            k=k,
+            mode="sampled",
+            num_samples=num_samples,
+            return_all_outputs=True,
         )
 
         assert len(ds) == num_samples

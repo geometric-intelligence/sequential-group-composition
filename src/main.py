@@ -14,7 +14,6 @@ from torch import nn, optim
 from torch.utils.data import DataLoader
 
 import src.dataset as dataset
-import src.fourier as fourier
 import src.model as model
 import src.optimizer as optimizer
 import src.power as power
@@ -431,7 +430,10 @@ def produce_plots_cn(
 
     if use_group_style:
         eval_ds, _ = dataset.OfflineModularCompositionDataset.from_cn(
-            config["data"]["p"], template_1d, k=2, mode="exhaustive",
+            config["data"]["p"],
+            template_1d,
+            k=2,
+            mode="exhaustive",
         )
         N_eval = len(eval_ds)
         X_eval_t = eval_ds.X.reshape(N_eval, -1).to(device)
@@ -667,7 +669,10 @@ def produce_plots_group(
     if model_type == "TwoLayerNet":
         # TwoLayerNet expects flattened binary pair input: (N, 2*group_size)
         eval_ds, _ = dataset.OfflineModularCompositionDataset.from_group(
-            template, k=2, group=group, mode="exhaustive",
+            template,
+            k=2,
+            group=group,
+            mode="exhaustive",
         )
         N_eval = len(eval_ds)
         X_eval_t = eval_ds.X.reshape(N_eval, -1).to(device)
@@ -870,9 +875,7 @@ def train_single_run(config: dict, run_dir: Path = None) -> dict:
         if template_type == "mnist":
             template_2d = template.mnist_2d(p1, p2, config["data"]["mnist_label"], root="data")
         elif template_type == "custom_fourier":
-            assert p1 == p2, (
-                f"custom_fourier for cnxcn requires p1 == p2, got p1={p1}, p2={p2}"
-            )
+            assert p1 == p2, f"custom_fourier for cnxcn requires p1 == p2, got p1={p1}, p2={p2}"
             powers = config["data"]["powers"]
             print("Template type: custom_fourier")
             print(f"Desired powers (per 2D mode): {powers}")
@@ -1131,16 +1134,25 @@ def train_single_run(config: dict, run_dir: Path = None) -> dict:
             # TwoLayerNet: X=(N, k, group_size) -> flattened to (N, k*group_size)
             if group_name == "cn":
                 pair_ds, _ = dataset.OfflineModularCompositionDataset.from_cn(
-                    config["data"]["p"], tpl, k=config["data"]["k"], mode="exhaustive",
+                    config["data"]["p"],
+                    tpl,
+                    k=config["data"]["k"],
+                    mode="exhaustive",
                 )
             elif group_name == "cnxcn":
                 pair_ds, _ = dataset.OfflineModularCompositionDataset.from_cnxcn(
-                    config["data"]["p1"], config["data"]["p2"], tpl,
-                    k=config["data"]["k"], mode="exhaustive",
+                    config["data"]["p1"],
+                    config["data"]["p2"],
+                    tpl,
+                    k=config["data"]["k"],
+                    mode="exhaustive",
                 )
             elif group_name in ("dihedral", "octahedral", "A5"):
                 pair_ds, _ = dataset.OfflineModularCompositionDataset.from_group(
-                    tpl, k=config["data"]["k"], group=group, mode="exhaustive",
+                    tpl,
+                    k=config["data"]["k"],
+                    group=group,
+                    mode="exhaustive",
                 )
             else:
                 raise ValueError(f"Unsupported group_name for TwoLayerNet: {group_name}")

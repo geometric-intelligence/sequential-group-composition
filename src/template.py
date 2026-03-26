@@ -2,6 +2,7 @@ import numpy as np
 
 import src.fourier as fourier
 
+
 def one_hot(p):
     """One-hot, with 0th frequency removed (!) encoding of an integer value in R^p."""
     vec = np.zeros(p)
@@ -31,8 +32,7 @@ def fixed_cn(p, powers):
     """
     n_modes = (p + 1) // 2 if p % 2 == 1 else p // 2 + 1
     assert len(powers) == n_modes, (
-        f"powers length {len(powers)} must equal number of frequency modes {n_modes} "
-        f"for p={p}"
+        f"powers length {len(powers)} must equal number of frequency modes {n_modes} for p={p}"
     )
 
     fourier_coef_mags = [0.0]
@@ -136,8 +136,7 @@ def fixed_group(group, powers):
     )
 
     fourier_coef_diag_values = [
-        np.sqrt(group_order * p / dim**2) if p > 0 else 0.0
-        for p, dim in zip(powers, irrep_dims)
+        np.sqrt(group_order * p / dim**2) if p > 0 else 0.0 for p, dim in zip(powers, irrep_dims)
     ]
 
     spectrum = []
@@ -152,8 +151,6 @@ def fixed_group(group, powers):
     template = template.astype(np.float32)
 
     return template
-
-
 
 
 def template_selector(config):
@@ -255,8 +252,6 @@ def mnist_2d(p1: int, p2: int, label: int, root: str = "data"):
     return img.numpy().astype(np.float32)
 
 
-
-
 def gaussian_1d(p: int, n_gaussians: int = 3, sigma_range: tuple = (0.5, 2.0), seed=None):
     """Generate 1D template as sum of Gaussians.
 
@@ -346,7 +341,6 @@ def gaussian_mixture_2d(
         if s > 1e-12:
             template /= s
     return template.astype(np.float32)
-
 
 
 def _fft_indices(n):

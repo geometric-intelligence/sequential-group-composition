@@ -120,7 +120,6 @@ class OnlineModularAdditionDataset2D(IterableDataset):
             yield X, Y
 
 
-
 class OnlineModularAdditionDataset1D(IterableDataset):
     """
     Online dataset that generates 1D modular addition samples on-the-fly.
@@ -205,7 +204,6 @@ class OnlineModularAdditionDataset1D(IterableDataset):
             yield X, Y
 
 
-
 class OfflineModularCompositionDataset(Dataset):
     """PyTorch map-style dataset for group composition tasks.
 
@@ -288,9 +286,7 @@ class OfflineModularCompositionDataset(Dataset):
         if mode == "exhaustive":
             total = n_elements**k
             if total > 1_000_000:
-                raise ValueError(
-                    f"n_elements^k = {total} is huge; use mode='sampled' instead."
-                )
+                raise ValueError(f"n_elements^k = {total} is huge; use mode='sampled' instead.")
             N = total
             sequence = np.zeros((N, k), dtype=np.int64)
             for idx in range(N):
@@ -424,17 +420,13 @@ class OfflineModularCompositionDataset(Dataset):
         sequence_xy : np.ndarray, shape (N, k, 2)
             Integer shifts (ax, ay) per token.
         """
-        assert template.shape == (p1, p2), (
-            f"template must be ({p1}, {p2}), got {template.shape}"
-        )
+        assert template.shape == (p1, p2), f"template must be ({p1}, {p2}), got {template.shape}"
         p_flat = p1 * p2
 
         if mode == "exhaustive":
             total = p_flat**k
             if total > 1_000_000:
-                raise ValueError(
-                    f"(p1*p2)**k = {total} is huge; use mode='sampled' instead."
-                )
+                raise ValueError(f"(p1*p2)**k = {total} is huge; use mode='sampled' instead.")
             N = total
             sequence_xy = np.zeros((N, k, 2), dtype=np.int64)
             for idx in range(N):
@@ -460,9 +452,7 @@ class OfflineModularCompositionDataset(Dataset):
                 X[i, t, :] = rolled.ravel()
                 sx = (sx + ax) % p1
                 sy = (sy + ay) % p2
-                Y[i, t, :] = np.roll(
-                    np.roll(template, shift=sx, axis=0), shift=sy, axis=1
-                ).ravel()
+                Y[i, t, :] = np.roll(np.roll(template, shift=sx, axis=0), shift=sy, axis=1).ravel()
 
         if not return_all_outputs:
             Y = Y[:, -1, :]
