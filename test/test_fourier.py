@@ -9,7 +9,7 @@ def test_group_fourier_inverse_is_identity():
     """Test that group_fourier followed by group_fourier_inverse reconstructs the original."""
     group = Octahedral()
 
-    tpl = template.fixed_group(group, fourier_coef_diag_values=[100.0, 20.0, 0.0, 0.0, 0.0])
+    tpl = template.fixed_group(group, powers=[100.0, 20.0, 0.0, 0.0, 0.0])
 
     fourier_coefs = fourier.group_fourier(group, tpl)
     reconstructed = fourier.group_fourier_inverse(group, fourier_coefs)
@@ -22,7 +22,7 @@ def test_group_fourier_inverse_is_identity():
 def test_group_fourier_coefs_shape():
     """Test that group_fourier returns one coefficient matrix per irrep."""
     group = Octahedral()
-    tpl = template.fixed_group(group, fourier_coef_diag_values=[100.0, 20.0, 0.0, 0.0, 0.0])
+    tpl = template.fixed_group(group, powers=[100.0, 20.0, 0.0, 0.0, 0.0])
 
     fourier_coefs = fourier.group_fourier(group, tpl)
 

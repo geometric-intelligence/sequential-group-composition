@@ -1,26 +1,25 @@
 # ============================================================================
-# Configuration: Icosahedral Group (A5)
+# Configuration: Product Group C_5 x C_5
 # ============================================================================
-# A5 (Icosahedral) group has order 60 and 5 irreps with dimensions [1, 3, 5, 3, 4].
-
+# C5 x C5 has order 25. Uses 2D template with p1=5, p2=5.
+#
 data:
-  group_name: A5              # Group family: 'cn' | 'cnxcn' | 'dihedral' | 'octahedral' | 'A5'
+  group_name: cnxcn           # Group family: 'cn' | 'cnxcn' | 'dihedral' | 'octahedral' | 'A5'
+  p1: 5                       # First cyclic group order / template height (cnxcn only)
+  p2: 5                       # Second cyclic group order / template width (cnxcn only)
   k: 2                        # Sequence length (number of group elements to compose)
   batch_size: 128             # Training batch size
   seed: 10                    # Random seed for reproducibility
-  template_type: custom_fourier  # Template type: 'onehot' | 'custom_fourier'
-  mode: sampled               # Dataset mode: 'sampled' | 'exhaustive'
+  template_type: custom_fourier  # Template type: 'mnist' | 'custom_fourier'
+  # Desired power per 2D Fourier mode (modes: (1,0), (0,1), (1,1), (2,0), (0,2))
+  powers: [200.0, 100.0, 50.0, 10.0, 5.0]
+  mode: exhaustive            # Dataset mode: 'sampled' | 'exhaustive'
   num_samples: 1000           # Number of samples (used when mode='sampled')
-
-  # custom_fourier powers (one per irrep)
-  # A5 irreps: [1, 3, 5, 3, 4]
-  # From screenshot: rho3(3D)~2000, rho1(3D)~1300, rho4(4D)~600, rho2(5D)~100
-  powers: [0.0, 1300.0, 100.0, 2000.0, 600.0]
 
 model:
   model_type: TwoLayerNet     # Model architecture: 'QuadraticRNN' | 'SequentialMLP' | 'TwoLayerNet'
-  hidden_dim: 400             # Hidden layer width
-  init_scale: 0.001           # Weight initialization scale
+  hidden_dim: 300             # Hidden layer width (hidden_factor=20 * group_size=25)
+  init_scale: 0.0001          # Weight initialization scale
   nonlinearity: square        # Activation function (TwoLayerNet only): 'square' | ...
   output_scale: 1.0           # Output layer scaling factor (TwoLayerNet only)
   return_all_outputs: false   # true = seq-to-seq, false = seq-to-one (final output only)
@@ -31,15 +30,14 @@ training:
   epochs: 100000               # Number of training epochs (offline mode)
   num_steps: 100              # Number of training steps (online mode)
   optimizer: per_neuron       # Optimizer: 'adam' | 'hybrid' | 'per_neuron'
-  learning_rate: 0.02         # Base learning rate
+  learning_rate: 0.005        # Base learning rate
   betas: [0.9, 0.999]        # Adam/hybrid beta parameters
   weight_decay: 0.0           # L2 regularization strength
   degree: null                # Homogeneity degree for 'per_neuron' (null = auto-infer)
   scaling_factor: -3          # Per-neuron norm exponent for 'hybrid' optimizer only
   grad_clip: 0.1              # Maximum gradient norm (0 = disabled)
-  verbose_interval: 200       # Print loss every N epochs/steps
-  save_param_interval: 10     # Save parameter snapshot every N epochs/steps
-  dense_save_until: 10        # Save every epoch until this epoch (for early-training detail)
+  verbose_interval: 400       # Print loss every N epochs/steps
+  save_param_interval: 1      # Save parameter snapshot every N epochs/steps
   reduction_threshold: null   # Early stopping: stop at this loss-reduction fraction (null = disabled)
 
 device: cuda:0                # Device: 'cuda:N' | 'cpu'

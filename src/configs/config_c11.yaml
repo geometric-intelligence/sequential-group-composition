@@ -9,7 +9,7 @@ data:
   k: 2                        # Sequence length (number of group elements to compose)
   batch_size: 256             # Training batch size
   seed: 10                    # Random seed for reproducibility
-  template_type: custom_fourier  # Template type: 'onehot' | 'fourier' | 'gaussian' | 'custom_fourier'
+  template_type: custom_fourier  # Template type: 'onehot' | 'gaussian' | 'custom_fourier'
   mode: exhaustive            # Dataset mode: 'sampled' | 'exhaustive'
   num_samples: 1000           # Number of samples (used when mode='sampled')
 
@@ -27,7 +27,7 @@ model:
 
 training:
   mode: offline               # Training mode: 'online' (fresh samples) | 'offline' (fixed dataset)
-  epochs: 5000                # Number of training epochs (offline mode)
+  epochs: 100000               # Number of training epochs (offline mode)
   num_steps: 100              # Number of training steps (online mode)
   optimizer: per_neuron       # Optimizer: 'adam' | 'hybrid' | 'per_neuron'
   learning_rate: 0.02         # Base learning rate
