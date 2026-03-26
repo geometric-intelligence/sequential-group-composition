@@ -243,6 +243,42 @@ def produce_plots_cnxcn(
             show=False,
         )
 
+        # Plot 4: 2x2 grid (Linear, Log Y, Log X, Log-Log)
+        x_values = steps if training_mode == "online" else epochs
+        _, axes = plt.subplots(2, 2, figsize=(12, 10))
+        scale_configs = [
+            ("linear", "linear", "Linear Scale"),
+            ("linear", "log", "Log Y"),
+            ("log", "linear", "Log X"),
+            ("log", "log", "Log-Log"),
+        ]
+        for ax, (xscale, yscale, title) in zip(axes.flat, scale_configs):
+            ax.plot(x_values, train_loss_hist, lw=2, color="#1f77b4")
+            ax.set_xscale(xscale)
+            ax.set_yscale(yscale)
+            ax.set_xlabel(x_label_steps)
+            ax.set_ylabel("Training Loss")
+            ax.set_title(title)
+            ax.grid(True, alpha=0.3)
+            if yscale == "log":
+                ax.set_ylim(bottom=1.0)
+
+        p1 = config["data"]["p1"]
+        p2 = config["data"]["p2"]
+        group_label = f"C{p1}\u00d7C{p2}"
+        lr = config["training"]["learning_rate"]
+        hidden_dim = config["model"]["hidden_dim"]
+        init_scale = config["model"]["init_scale"]
+        plt.suptitle(
+            f"{group_label} Composition (k={k}, lr={lr}, h={hidden_dim}, init={init_scale:.0e})",
+            fontsize=14,
+        )
+        plt.tight_layout()
+        training_loss_path = os.path.join(run_dir, "training_loss.pdf")
+        plt.savefig(training_loss_path, bbox_inches="tight", dpi=150)
+        plt.close()
+        print(f"  \u2713 Saved {training_loss_path}")
+
     ### ----- PLOT MODEL PREDICTIONS ----- ###
     if plot_predictions and model_type != "TwoLayerNet":
         print("Plotting model predictions over time...")
@@ -259,13 +295,15 @@ def produce_plots_cnxcn(
         )
 
     ### ----- PLOT POWER SPECTRUM ANALYSIS ----- ###
+    power_data = None
     if plot_power_spectrum:
         print("Plotting power spectrum over time...")
         p1 = config["data"]["p1"]
         p2 = config["data"]["p2"]
         optimizer_name = config["training"]["optimizer"]
         init_scale = config["model"]["init_scale"]
-        viz.plot_power_cnxcn(
+        group_label = f"C{p1}\u00d7C{p2}"
+        power_data = viz.plot_power_cnxcn(
             model=model,
             param_hist=param_hist,
             param_save_indices=param_save_indices,
@@ -277,9 +315,30 @@ def produce_plots_cnxcn(
             optimizer=optimizer_name,
             init_scale=init_scale,
             save_path=os.path.join(run_dir, "power_spectrum_analysis.pdf"),
-            group_label=f"C{p1}\u00d7C{p2}",
+            group_label=group_label,
             learning_rate=config["training"]["learning_rate"],
             hidden_dim=config["model"]["hidden_dim"],
+        )
+
+    ### ----- PLOT COMBINED LOSS AND POWER ----- ###
+    if plot_training_loss and power_data is not None:
+        print("\nPlotting combined loss and power...")
+        x_values = steps if training_mode == "online" else epochs
+        p1 = config["data"]["p1"]
+        p2 = config["data"]["p2"]
+        group_label = f"C{p1}\u00d7C{p2}"
+        viz.plot_loss_and_power(
+            x_values=x_values,
+            train_loss_hist=train_loss_hist,
+            x_label=x_label_steps,
+            power_data=power_data,
+            save_path=os.path.join(run_dir, "loss_and_power.pdf"),
+            title=(
+                f"{group_label} Training"
+                f" (k={k}, lr={config['training']['learning_rate']},"
+                f" init={config['model']['init_scale']:.0e},"
+                f" h={config['model']['hidden_dim']}, {config['training']['optimizer']})"
+            ),
         )
 
     ### ----- PLOT W_MIX FREQUENCY STRUCTURE (QuadraticRNN only) ----- ###
@@ -457,45 +516,66 @@ def produce_plots_cn(
             )
 
     ### ----- PLOT POWER SPECTRUM ANALYSIS ----- ###
+    power_data = None
     if plot_power_spectrum:
         print("Plotting power spectrum over time...")
 
-    if use_group_style:
-        optimizer_name = config["training"]["optimizer"]
-        init_scale = config["model"]["init_scale"]
-        viz.plot_power_cn(
-            model=model,
-            param_hist=param_hist,
-            param_save_indices=param_save_indices,
-            X_eval=X_eval_t,
-            template_1d=template_1d,
-            p=p,
-            k=k,
-            optimizer=optimizer_name,
-            init_scale=init_scale,
-            save_path=os.path.join(run_dir, "power_spectrum_analysis.pdf"),
-            group_label=f"C{p}",
-            learning_rate=config["training"]["learning_rate"],
-            hidden_dim=config["model"]["hidden_dim"],
-        )
-    else:
-        viz.plot_power_1d(
-            model,
-            param_hist,
-            X_seq_1d_t,
-            Y_seq_1d_t,
-            template_1d,
-            p,
-            loss_history=train_loss_hist,
-            param_save_indices=param_save_indices,
-            num_freqs_to_track=min(10, p // 4),
-            checkpoint_indices=checkpoint_indices,
-            num_samples=100,
-            save_path=os.path.join(run_dir, "power_spectrum_analysis.pdf"),
-            show=False,
+        if use_group_style:
+            optimizer_name = config["training"]["optimizer"]
+            init_scale = config["model"]["init_scale"]
+            group_label = f"C{p}"
+            power_data = viz.plot_power_cn(
+                model=model,
+                param_hist=param_hist,
+                param_save_indices=param_save_indices,
+                X_eval=X_eval_t,
+                template_1d=template_1d,
+                p=p,
+                k=k,
+                optimizer=optimizer_name,
+                init_scale=init_scale,
+                save_path=os.path.join(run_dir, "power_spectrum_analysis.pdf"),
+                group_label=group_label,
+                learning_rate=config["training"]["learning_rate"],
+                hidden_dim=config["model"]["hidden_dim"],
+            )
+        else:
+            viz.plot_power_1d(
+                model,
+                param_hist,
+                X_seq_1d_t,
+                Y_seq_1d_t,
+                template_1d,
+                p,
+                loss_history=train_loss_hist,
+                param_save_indices=param_save_indices,
+                num_freqs_to_track=min(10, p // 4),
+                checkpoint_indices=checkpoint_indices,
+                num_samples=100,
+                save_path=os.path.join(run_dir, "power_spectrum_analysis.pdf"),
+                show=False,
+            )
+
+    ### ----- PLOT COMBINED LOSS AND POWER ----- ###
+    if plot_training_loss and power_data is not None:
+        print("\nPlotting combined loss and power...")
+        x_values = steps if training_mode == "online" else epochs
+        group_label = f"C{p}"
+        viz.plot_loss_and_power(
+            x_values=x_values,
+            train_loss_hist=train_loss_hist,
+            x_label=x_label_steps,
+            power_data=power_data,
+            save_path=os.path.join(run_dir, "loss_and_power.pdf"),
+            title=(
+                f"{group_label} Training"
+                f" (k={k}, lr={config['training']['learning_rate']},"
+                f" init={config['model']['init_scale']:.0e},"
+                f" h={config['model']['hidden_dim']}, {config['training']['optimizer']})"
+            ),
         )
 
-    print(f"\n✓ All C{p} plots generated successfully!")
+    print(f"\n\u2713 All C{p} plots generated successfully!")
 
 
 def produce_plots_group(
