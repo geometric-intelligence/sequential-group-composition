@@ -1389,6 +1389,102 @@ def plot_loss_and_power(
     plt.close()
 
 
+def plot_combined_loss_and_power(
+    run_dirs,
+    group_labels,
+    save_path=None,
+):
+    """Create a 2-row x N-column combined figure from multiple run directories.
+
+    Top row: Log-Log training loss for each group.
+    Bottom row: Log-X power spectrum with inline labels for each group.
+
+    Each run directory must contain train_loss_history.npy, power_data.npz,
+    and config.yaml.
+    """
+    from pathlib import Path
+
+    import yaml
+
+    n_cols = len(run_dirs)
+    fig, axes = plt.subplots(2, n_cols, figsize=(5 * n_cols, 8))
+    if n_cols == 1:
+        axes = axes.reshape(2, 1)
+
+    for col, (rd, label) in enumerate(zip(run_dirs, group_labels)):
+        rd = Path(rd)
+        loss_hist = np.load(rd / "train_loss_history.npy")
+        pd = np.load(rd / "power_data.npz", allow_pickle=True)
+        with open(rd / "config.yaml") as f:
+            cfg = yaml.safe_load(f)
+
+        training_mode = cfg["training"]["mode"]
+        if training_mode == "online":
+            x_all = np.arange(len(loss_hist))
+            x_label = "Step"
+        else:
+            x_all = np.arange(len(loss_hist))
+            x_label = "Epoch"
+
+        # -- Top row: Log-Log training loss --
+        ax = axes[0, col]
+        pos = x_all > 0
+        ax.plot(x_all[pos], np.asarray(loss_hist)[pos], lw=1.5, color="#1f77b4")
+        ax.set_xscale("log")
+        ax.set_yscale("log")
+        ax.grid(True, alpha=0.3)
+        ax.set_xlabel(x_label, fontsize=9)
+        if col == 0:
+            ax.set_ylabel("Training Loss", fontsize=10)
+        else:
+            ax.tick_params(labelleft=False)
+
+        hp_parts = [f"k={cfg['data']['k']}"]
+        hp_parts.append(f"lr={cfg['training']['learning_rate']}")
+        hp_parts.append(f"init={cfg['model']['init_scale']:.0e}")
+        hp_parts.append(f"h={cfg['model']['hidden_dim']}")
+        hp_parts.append(cfg["training"]["optimizer"])
+        ax.set_title(f"{label}\n({', '.join(hp_parts)})", fontsize=9)
+
+        # -- Bottom row: Log-X power spectrum --
+        ax = axes[1, col]
+        valid_epochs = np.asarray(pd["valid_epochs"])
+        valid_model_powers = np.asarray(pd["valid_model_powers"])
+        template_power = np.asarray(pd["template_power"])
+        top_indices = np.asarray(pd["top_irrep_indices"])
+        colors_line = list(pd["colors_line"])
+        labels_list = list(pd["labels"])
+
+        lines_info = []
+        for i, idx in enumerate(top_indices):
+            pv = valid_model_powers[:, idx]
+            ax.plot(valid_epochs, pv, "-", lw=1.5, color=colors_line[i])
+            ax.axhline(template_power[idx], linestyle="--", alpha=0.4, color=colors_line[i])
+            lines_info.append(
+                {
+                    "x": valid_epochs,
+                    "y": pv,
+                    "label": labels_list[i],
+                    "color": colors_line[i],
+                }
+            )
+        _add_line_labels(ax, lines_info, fontsize=8)
+        ax.set_xscale("log")
+        ax.grid(True, alpha=0.3)
+        ax.set_xlabel(x_label, fontsize=9)
+        if col == 0:
+            ax.set_ylabel("Power", fontsize=10)
+        else:
+            ax.tick_params(labelleft=False)
+
+    fig.subplots_adjust(hspace=0.35, wspace=0.15, top=0.88)
+    if save_path:
+        fig.savefig(save_path, bbox_inches="tight", dpi=150)
+        print(f"  \u2713 Saved {save_path}")
+    plt.close(fig)
+    return fig
+
+
 def plot_irreps(group, show=False):
     """Plot the irreducible representations (irreps) of the group.
 
