@@ -83,6 +83,18 @@ The repository includes preconfigured experiments for eight groups:
 | Octahedral $O_h$ | `config_oh.yaml` | 24 | 2 | TwoLayerNet |
 | Icosahedral $A_5$ | `config_a5.yaml` | 60 | 2 | TwoLayerNet |
 
+### Combined Plot (Figure 1)
+
+Reproduce the main paper figure (training loss + power spectrum for C11, C5xC5, D5, Oh, A5):
+
+```bash
+python src/main.py --combined-plot
+```
+
+This uses precomputed data from `runs_data/` and produces `combined_loss_and_power.pdf` in seconds. No GPU or training is needed.
+
+If you want to retrain from scratch instead, delete `runs_data/` first — the command will automatically detect CUDA, train each group, and generate the plot.
+
 ### Parameter Sweeps
 
 Run experiments across multiple configurations and random seeds:
@@ -160,8 +172,13 @@ group-agf/
 │   ├── viz.py                    # Plotting and visualization
 │   ├── train.py                  # Training loops (offline and online)
 │   ├── run_sweep.py              # Parameter sweep runner
-├── configs/                      # Configs
-│   ├── config_*.yaml             # Group-specific configurations
+│   ├── configs/                  # Group-specific configurations
+│   │   └── config_*.yaml
+├── runs_data/                    # Precomputed data for combined plot (Figure 1)
+│   ├── {C11,C5xC5,D5,Oh,A5}/
+│   │   ├── config.yaml
+│   │   ├── train_loss_history.npy
+│   │   └── power_data.npz
 ├── test/                         # Unit and integration tests
 ├── notebooks/                    # Jupyter notebooks for exploration
 ├── pyproject.toml                # Project metadata and dependencies

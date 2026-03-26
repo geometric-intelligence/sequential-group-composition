@@ -50,6 +50,7 @@ def save_results(
     train_loss_hist,
     val_loss_hist,
     param_hist,
+    param_save_indices,
     template: np.ndarray,
     training_time: float,
     device: str,
@@ -72,6 +73,7 @@ def save_results(
     np.save(run_dir / "train_loss_history.npy", np.array(train_loss_hist))
     np.save(run_dir / "val_loss_history.npy", np.array(val_loss_hist))
     torch.save(param_hist, run_dir / "param_history.pt")
+    np.save(run_dir / "param_save_indices.npy", np.array(param_save_indices))
 
     # Save final model
     torch.save(model.state_dict(), checkpoints_dir / "final_model.pt")
@@ -90,6 +92,150 @@ def save_results(
 
     print("  ✓ All results saved")
     return metadata
+
+
+def _build_model_from_config(config, template_flat, device):
+    """Reconstruct a model from config (no weights loaded)."""
+    model_type = config["model"]["model_type"]
+    p_flat = len(template_flat)
+    template_torch = torch.tensor(template_flat, device=device, dtype=torch.float32)
+
+    if model_type == "QuadraticRNN":
+        m = model.QuadraticRNN(
+            p=p_flat,
+            d=config["model"]["hidden_dim"],
+            template=template_torch,
+            init_scale=config["model"]["init_scale"],
+            return_all_outputs=config["model"]["return_all_outputs"],
+            transform_type=config["model"]["transform_type"],
+        )
+    elif model_type == "SequentialMLP":
+        m = model.SequentialMLP(
+            p=p_flat,
+            d=config["model"]["hidden_dim"],
+            template=template_torch,
+            k=config["data"]["k"],
+            init_scale=config["model"]["init_scale"],
+            return_all_outputs=config["model"]["return_all_outputs"],
+        )
+    elif model_type == "TwoLayerNet":
+        m = model.TwoLayerNet(
+            group_size=p_flat,
+            hidden_size=config["model"]["hidden_dim"],
+            nonlinearity=config["model"].get("nonlinearity", "square"),
+            init_scale=config["model"]["init_scale"],
+            output_scale=config["model"].get("output_scale", 1.0),
+        )
+    else:
+        raise ValueError(f"Unknown model_type: {model_type}")
+    return m.to(device)
+
+
+def _reconstruct_param_save_indices(config, num_saved):
+    """Reconstruct param_save_indices from config when not saved to disk."""
+    dense = config["training"].get("dense_save_until", 0)
+    interval = config["training"].get("save_param_interval", 1)
+    epochs = config["training"]["epochs"]
+
+    indices = [0]
+    for epoch in range(1, epochs + 1):
+        should_save = (
+            epoch <= dense
+            or (interval is not None and (epoch % interval == 0 or epoch == epochs))
+            or (interval is None and epoch == epochs)
+        )
+        if should_save:
+            indices.append(epoch)
+    if len(indices) != num_saved:
+        print(
+            f"  Warning: reconstructed {len(indices)} indices "
+            f"but have {num_saved} snapshots, using simple range"
+        )
+        indices = list(range(num_saved))
+    return indices
+
+
+def regenerate_plots(run_dir, device="cpu"):
+    """Regenerate analysis plots from a saved run directory (no re-training).
+
+    Loads config, template, param_history, and loss history from the run
+    directory, rebuilds the model, and calls the appropriate produce_plots
+    function.  Useful when plotting code has been updated and you want to
+    refresh PDFs / save new artefacts (e.g. power_data.npz) without
+    repeating the expensive training step.
+    """
+    run_dir = Path(run_dir)
+    print(f"\n=== Regenerating plots from {run_dir} ===")
+
+    with open(run_dir / "config.yaml") as f:
+        config = yaml.safe_load(f)
+
+    train_loss_hist = np.load(run_dir / "train_loss_history.npy").tolist()
+    template = np.load(run_dir / "template.npy")
+    param_hist = torch.load(
+        run_dir / "param_history.pt", map_location=device, weights_only=False
+    )
+
+    psi_path = run_dir / "param_save_indices.npy"
+    if psi_path.exists():
+        param_save_indices = np.load(psi_path).tolist()
+    else:
+        param_save_indices = _reconstruct_param_save_indices(config, len(param_hist))
+
+    mdl = _build_model_from_config(config, template.flatten(), device)
+
+    group_name = config["data"]["group_name"]
+    training_mode = config["training"]["mode"]
+
+    if group_name == "cnxcn":
+        produce_plots_cnxcn(
+            run_dir=run_dir,
+            config=config,
+            model=mdl,
+            param_hist=param_hist,
+            param_save_indices=param_save_indices,
+            train_loss_hist=train_loss_hist,
+            template_2d=template,
+            training_mode=training_mode,
+            device=device,
+        )
+    elif group_name == "cn":
+        produce_plots_cn(
+            run_dir=run_dir,
+            config=config,
+            model=mdl,
+            param_hist=param_hist,
+            param_save_indices=param_save_indices,
+            train_loss_hist=train_loss_hist,
+            template_1d=template,
+            training_mode=training_mode,
+            device=device,
+        )
+    elif group_name in ("dihedral", "octahedral", "A5"):
+        if group_name == "dihedral":
+            from escnn.group import DihedralGroup
+            group = DihedralGroup(N=config["data"].get("group_n", 3))
+        elif group_name == "octahedral":
+            from escnn.group import Octahedral
+            group = Octahedral()
+        else:
+            from escnn.group import Icosahedral
+            group = Icosahedral()
+        produce_plots_group(
+            run_dir=run_dir,
+            config=config,
+            model=mdl,
+            param_hist=param_hist,
+            param_save_indices=param_save_indices,
+            train_loss_hist=train_loss_hist,
+            template=template,
+            device=device,
+            group=group,
+        )
+    else:
+        raise ValueError(f"Unknown group_name: {group_name}")
+
+    print(f"\u2713 Plots regenerated for {run_dir}")
 
 
 def produce_plots_cnxcn(
@@ -318,6 +464,7 @@ def produce_plots_cnxcn(
             learning_rate=config["training"]["learning_rate"],
             hidden_dim=config["model"]["hidden_dim"],
         )
+        np.savez(run_dir / "power_data.npz", **power_data)
 
     ### ----- PLOT COMBINED LOSS AND POWER ----- ###
     if plot_training_loss and power_data is not None:
@@ -541,6 +688,7 @@ def produce_plots_cn(
                 learning_rate=config["training"]["learning_rate"],
                 hidden_dim=config["model"]["hidden_dim"],
             )
+            np.savez(run_dir / "power_data.npz", **power_data)
         else:
             viz.plot_power_1d(
                 model,
@@ -778,6 +926,7 @@ def produce_plots_group(
             hidden_dim=config["model"]["hidden_dim"],
         )
         print(f"  ✓ Saved {os.path.join(run_dir, 'power_spectrum_analysis.pdf')}")
+        np.savez(run_dir / "power_data.npz", **power_data)
 
     ### ----- PLOT COMBINED LOSS AND POWER ----- ###
     if plot_training_loss and power_data is not None:
@@ -1330,6 +1479,7 @@ def train_single_run(config: dict, run_dir: Path = None) -> dict:
         train_loss_hist,
         val_loss_hist,
         param_hist,
+        param_save_indices,
         tpl,
         training_time,
         device,
@@ -1407,6 +1557,190 @@ def main(config: dict):
     train_single_run(config)
 
 
+GROUP_CONFIG_MAP = {
+    "C11": "src/configs/config_c11.yaml",
+    "C5xC5": "src/configs/config_c5xc5.yaml",
+    "D5": "src/configs/config_d5.yaml",
+    "Oh": "src/configs/config_oh.yaml",
+    "A5": "src/configs/config_a5.yaml",
+}
+
+
+def _auto_device():
+    """Return 'cuda:0' if CUDA is available, else 'cpu'."""
+    return "cuda:0" if torch.cuda.is_available() else "cpu"
+
+
+def _group_matches(cfg, ref_config):
+    """Check whether a run config matches the reference config's group."""
+    ref_gn = ref_config["data"]["group_name"]
+    if cfg["data"]["group_name"] != ref_gn:
+        return False
+    if ref_gn == "dihedral" and cfg["data"].get("group_n") != ref_config["data"].get("group_n"):
+        return False
+    if ref_gn == "cn" and cfg["data"].get("p") != ref_config["data"].get("p"):
+        return False
+    if ref_gn == "cnxcn":
+        if cfg["data"].get("p1") != ref_config["data"].get("p1"):
+            return False
+        if cfg["data"].get("p2") != ref_config["data"].get("p2"):
+            return False
+    return True
+
+
+def _find_latest_run_with(artifact, group_key, runs_root="runs", min_epochs=None):
+    """Return the most recent run directory containing *artifact* whose
+    config matches the group and has at least *min_epochs* epochs."""
+    runs_root = Path(runs_root)
+    if not runs_root.exists():
+        return None
+
+    ref_config = load_config(GROUP_CONFIG_MAP[group_key])
+
+    for d in sorted(runs_root.iterdir(), reverse=True):
+        if not d.is_dir() or not (d / artifact).exists():
+            continue
+        cfg_path = d / "config.yaml"
+        if not cfg_path.exists():
+            continue
+        with open(cfg_path) as f:
+            cfg = yaml.safe_load(f)
+        if not _group_matches(cfg, ref_config):
+            continue
+        if min_epochs is not None and cfg["training"].get("epochs", 0) < min_epochs:
+            continue
+        return d
+    return None
+
+
+def _estimate_training_time(group_key, target_epochs, runs_root="runs"):
+    """Estimate training time in seconds by extrapolating from past runs."""
+    ref_config = load_config(GROUP_CONFIG_MAP[group_key])
+    runs_root = Path(runs_root)
+    if not runs_root.exists():
+        return None
+
+    for d in sorted(runs_root.iterdir(), reverse=True):
+        cfg_path = d / "config.yaml"
+        meta_path = d / "metadata.json"
+        if not cfg_path.exists() or not meta_path.exists():
+            continue
+        with open(cfg_path) as f:
+            cfg = yaml.safe_load(f)
+        if not _group_matches(cfg, ref_config):
+            continue
+        past_epochs = cfg["training"].get("epochs", 0)
+        if past_epochs <= 0:
+            continue
+        with open(meta_path) as f:
+            meta = json.load(f)
+        past_time = meta.get("training_time_seconds", 0)
+        return past_time / past_epochs * target_epochs
+    return None
+
+
+def make_combined_plot(groups=None):
+    """Orchestrate: find or produce runs for each group, then combine.
+
+    Automatically uses CUDA when available.  Before executing any work,
+    prints a plan listing which groups are ready, which will be
+    regenerated, and which require full training, together with an
+    estimated total wall-clock time.
+    """
+    device = _auto_device()
+    print(f"Device: {device}")
+    if groups is None:
+        groups = list(GROUP_CONFIG_MAP.keys())
+
+    # --- Planning pass: classify each group ---
+    RUNS_DATA = Path("runs_data")
+    REGEN_SECONDS = 120
+    PLOT_SECONDS = 10
+
+    plan = []
+    for g in groups:
+        ref_cfg = load_config(GROUP_CONFIG_MAP[g])
+        target_epochs = ref_cfg["training"]["epochs"]
+
+        rd_ready = _find_latest_run_with("power_data.npz", g, min_epochs=target_epochs)
+        if rd_ready is not None:
+            plan.append({"group": g, "action": "ready", "run_dir": rd_ready, "est_sec": 0})
+            continue
+
+        cached = RUNS_DATA / g
+        if (cached / "power_data.npz").exists() and (cached / "train_loss_history.npy").exists():
+            plan.append({"group": g, "action": "cached", "run_dir": cached, "est_sec": 0})
+            continue
+
+        rd_regen = _find_latest_run_with("param_history.pt", g, min_epochs=target_epochs)
+        if rd_regen is not None:
+            plan.append({"group": g, "action": "regenerate", "run_dir": rd_regen, "est_sec": REGEN_SECONDS})
+            continue
+
+        est = _estimate_training_time(g, target_epochs)
+        if est is None:
+            est = target_epochs * 0.05
+        plan.append({"group": g, "action": "train", "run_dir": None, "est_sec": est + REGEN_SECONDS})
+
+    # --- Print plan ---
+    total_est = sum(p["est_sec"] for p in plan) + PLOT_SECONDS
+    print("\n" + "=" * 60)
+    print("COMBINED PLOT PLAN")
+    print("=" * 60)
+    for p in plan:
+        g = p["group"]
+        ref_cfg = load_config(GROUP_CONFIG_MAP[g])
+        epochs = ref_cfg["training"]["epochs"]
+        if p["action"] in ("ready", "cached"):
+            status = f"READY  (using {p['run_dir']})"
+        elif p["action"] == "regenerate":
+            status = f"REGEN  (replot {p['run_dir']}, ~{p['est_sec']:.0f}s)"
+        else:
+            status = f"TRAIN  ({epochs:,} epochs, ~{p['est_sec']:.0f}s)"
+        print(f"  {g:8s}  {status}")
+
+    minutes = total_est / 60
+    if minutes < 1:
+        time_str = f"{total_est:.0f}s"
+    else:
+        time_str = f"{minutes:.1f} min"
+    print(f"\nEstimated total time: {time_str}")
+    print("=" * 60)
+
+    # --- Execution pass ---
+    run_dirs = []
+    group_labels = []
+    for p in plan:
+        g = p["group"]
+        print(f"\n--- {g} [{p['action'].upper()}] ---")
+
+        if p["action"] in ("ready", "cached"):
+            rd = p["run_dir"]
+            print(f"  Using existing run: {rd}")
+        elif p["action"] == "regenerate":
+            rd = p["run_dir"]
+            print(f"  Regenerating plots for: {rd}")
+            regenerate_plots(rd, device=device)
+        else:
+            print(f"  Training from {GROUP_CONFIG_MAP[g]}")
+            cfg = load_config(GROUP_CONFIG_MAP[g])
+            results = train_single_run(cfg)
+            rd = Path(results["run_dir"])
+
+        run_dirs.append(rd)
+        group_labels.append(g)
+
+    save_path = "combined_loss_and_power.pdf"
+    print(f"\n=== Creating combined plot: {save_path} ===")
+    viz.plot_combined_loss_and_power(
+        run_dirs=run_dirs,
+        group_labels=group_labels,
+        save_path=save_path,
+    )
+    print(f"\nDone. Output: {save_path}")
+    return save_path
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Train QuadraticRNN or SequentialMLP on group modular addition"
@@ -1417,8 +1751,25 @@ if __name__ == "__main__":
         default="src/configs/config.yaml",
         help="Path to config YAML file (default: src/configs/config.yaml)",
     )
+    parser.add_argument(
+        "--regenerate",
+        type=str,
+        default=None,
+        metavar="RUN_DIR",
+        help="Regenerate plots from a saved run directory (no re-training)",
+    )
+    parser.add_argument(
+        "--combined-plot",
+        action="store_true",
+        help="Produce the combined 2x5 loss-and-power figure for C11, C5xC5, D5, Oh, A5",
+    )
 
     args = parser.parse_args()
 
-    config = load_config(args.config)
-    main(config)
+    if args.regenerate:
+        regenerate_plots(args.regenerate, device=_auto_device())
+    elif args.combined_plot:
+        make_combined_plot()
+    else:
+        config = load_config(args.config)
+        main(config)
