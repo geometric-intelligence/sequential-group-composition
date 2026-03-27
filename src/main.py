@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+import shutil
 import time
 from datetime import datetime
 from pathlib import Path
@@ -55,7 +56,12 @@ def save_results(
     training_time: float,
     device: str,
 ) -> dict:
-    """Save all experiment results."""
+    """Save all experiment results (histories, checkpoints, config).
+
+    Plot-specific arrays such as ``power_data.npz`` and
+    ``w_dominant_irrep_fraction.npz`` are written later by ``produce_plots_*``
+    (not by this function).
+    """
     print(f"Saving results to {run_dir}...")
 
     # Ensure checkpoints directory exists
@@ -161,8 +167,9 @@ def regenerate_plots(run_dir, device="cpu"):
     Loads config, template, param_history, and loss history from the run
     directory, rebuilds the model, and calls the appropriate produce_plots
     function.  Useful when plotting code has been updated and you want to
-    refresh PDFs / save new artefacts (e.g. power_data.npz) without
-    repeating the expensive training step.
+    refresh PDFs / save new artefacts (e.g. ``power_data.npz``,
+    ``w_dominant_irrep_fraction.npz``) without repeating the expensive
+    training step.
     """
     run_dir = Path(run_dir)
     print(f"\n=== Regenerating plots from {run_dir} ===")
@@ -236,6 +243,8 @@ def regenerate_plots(run_dir, device="cpu"):
     else:
         raise ValueError(f"Unknown group_name: {group_name}")
 
+    sync_runs_data_cache(run_dir, config)
+
     print(f"\u2713 Plots regenerated for {run_dir}")
 
 
@@ -274,11 +283,14 @@ def produce_plots_cnxcn(
     """
     print("\n=== Generating Analysis Plots ===")
 
-    plots = config.get("analysis", {}).get("plots", {})
-    plot_training_loss = plots.get("training_loss", True)
-    plot_predictions = plots.get("predictions", True)
-    plot_power_spectrum = plots.get("power_spectrum", True)
-    plot_wmix = plots.get("wmix", True)
+    plots_bool_dict = config.get("analysis", {}).get("plots", {})
+    plot_training_loss_bool = plots_bool_dict.get("training_loss", True)
+    plot_predictions_bool = plots_bool_dict.get("predictions", True)
+    plot_power_spectrum = plots_bool_dict.get("power_spectrum", True)
+    plot_wmix_bool = plots_bool_dict.get("wmix", True)
+    plot_w_dominant_irrep_fraction_bool = plots_bool_dict.get(
+        "w_dominant_irrep_fraction", True
+    )
 
     ### ----- COMPUTE X-AXIS VALUES ----- ###
     group_name = config["data"]["group_name"]
@@ -350,7 +362,7 @@ def produce_plots_cnxcn(
     )
 
     ### ----- PLOT TRAINING LOSS ----- ###
-    if plot_training_loss:
+    if plot_training_loss_bool:
         print("\nPlotting training loss...")
 
         # Plot 1: Loss vs Steps/Epochs
@@ -426,7 +438,7 @@ def produce_plots_cnxcn(
         print(f"  \u2713 Saved {training_loss_path}")
 
     ### ----- PLOT MODEL PREDICTIONS ----- ###
-    if plot_predictions and model_type != "TwoLayerNet":
+    if plot_predictions_bool and model_type != "TwoLayerNet":
         print("Plotting model predictions over time...")
         viz.plot_predictions_2d(
             model,
@@ -467,29 +479,43 @@ def produce_plots_cnxcn(
         )
         np.savez(run_dir / "power_data.npz", **power_data)
 
-    ### ----- PLOT COMBINED LOSS AND POWER ----- ###
-    if plot_training_loss and power_data is not None:
-        print("\nPlotting combined loss and power...")
+    ### ----- PLOT COMBINED LOSS, POWER, AND WEIGHT POWER ----- ###
+    weight_power_in_combined = False
+    if plot_training_loss_bool and power_data is not None:
+        print("\nPlotting combined loss, power, and weight power...")
         x_values = steps if training_mode == "online" else epochs
         p1 = config["data"]["p1"]
         p2 = config["data"]["p2"]
         group_label = f"C{p1}\u00d7C{p2}"
-        viz.plot_loss_and_power(
+        weight_kw = (
+            {
+                "param_hist": param_hist,
+                "param_save_indices": param_save_indices,
+                "p": p1 * p2,
+                "group_name": "cnxcn",
+                "p1": p1,
+                "p2": p2,
+            }
+            if plot_w_dominant_irrep_fraction_bool
+            else {}
+        )
+        weight_power_in_combined = viz.plot_loss_power_and_weight_power(
             x_values=x_values,
             train_loss_hist=train_loss_hist,
             x_label=x_label_steps,
             power_data=power_data,
-            save_path=os.path.join(run_dir, "loss_and_power.pdf"),
+            save_path=os.path.join(run_dir, "loss_power_and_weight_power.pdf"),
             title=(
                 f"{group_label} Training"
                 f" (k={k}, lr={config['training']['learning_rate']},"
                 f" init={config['model']['init_scale']:.0e},"
                 f" h={config['model']['hidden_dim']}, {config['training']['optimizer']})"
             ),
+            **weight_kw,
         )
 
     ### ----- PLOT W_MIX FREQUENCY STRUCTURE (QuadraticRNN only) ----- ###
-    if plot_wmix and model_type == "QuadraticRNN":
+    if plot_wmix_bool and model_type == "QuadraticRNN":
         print("Creating Fourier modes reference...")
         tracked_freqs = power.topk_template_freqs(template_2d, K=10)
         colors = plt.cm.tab10(np.linspace(0, 1, len(tracked_freqs)))
@@ -509,6 +535,34 @@ def produce_plots_cnxcn(
     elif model_type != "QuadraticRNN":
         print("Skipping W_mix frequency structure plot (not applicable for SequentialMLP)")
 
+    ### ----- PLOT W-ROW DOMINANT IRREP FRACTION (TwoLayerNet / W_out) ----- ###
+    if plot_w_dominant_irrep_fraction_bool and not weight_power_in_combined:
+        print("Plotting W-row dominant irrep fraction over time...")
+        p_flat_2d = config["data"]["p1"] * config["data"]["p2"]
+        fig_w = viz.plot_w_dominant_irrep_fraction(
+            param_hist=param_hist,
+            param_save_indices=param_save_indices,
+            p=p_flat_2d,
+            x_label=x_label_steps,
+            group_name="cnxcn",
+            p1=config["data"]["p1"],
+            p2=config["data"]["p2"],
+            save_path=os.path.join(run_dir, "w_dominant_irrep_fraction.pdf"),
+            show=False,
+        )
+        if fig_w is None:
+            print(
+                "  (skipped w_dominant_irrep_fraction: need W or W_out with shape"
+                f" (hidden, p1*p2) for p1={config['data']['p1']}, p2={config['data']['p2']})"
+            )
+
+    viz.maybe_save_w_dominant_irrep_fraction_npz(
+        run_dir,
+        param_hist,
+        param_save_indices,
+        config,
+        group=None,
+    )
     print("\n✓ All plots generated successfully!")
 
 
@@ -539,10 +593,13 @@ def produce_plots_cn(
     """
     print("\n=== Generating Analysis Plots (1D) ===")
 
-    plots = config.get("analysis", {}).get("plots", {})
-    plot_training_loss = plots.get("training_loss", True)
-    plot_predictions = plots.get("predictions", True)
-    plot_power_spectrum = plots.get("power_spectrum", True)
+    plots_bool_dict = config.get("analysis", {}).get("plots", {})
+    plot_training_loss_bool = plots_bool_dict.get("training_loss", True)
+    plot_predictions_bool = plots_bool_dict.get("predictions", True)
+    plot_power_spectrum = plots_bool_dict.get("power_spectrum", True)
+    plot_w_dominant_irrep_fraction_bool = plots_bool_dict.get(
+        "w_dominant_irrep_fraction", True
+    )
 
     ### ----- COMPUTE X-AXIS VALUES ----- ###
     p = config["data"]["p"]
@@ -611,7 +668,7 @@ def produce_plots_cn(
     )
 
     ### ----- PLOT TRAINING LOSS ----- ###
-    if plot_training_loss:
+    if plot_training_loss_bool:
         print("\nPlotting training loss...")
 
         _, axes = plt.subplots(2, 2, figsize=(12, 10))
@@ -652,7 +709,7 @@ def produce_plots_cn(
 
     ### ----- PLOT MODEL PREDICTIONS ----- ###
     if not use_group_style:
-        if plot_predictions:
+        if plot_predictions_bool:
             print("Plotting model predictions over time...")
             viz.plot_predictions_1d(
                 model,
@@ -707,26 +764,62 @@ def produce_plots_cn(
                 show=False,
             )
 
-    ### ----- PLOT COMBINED LOSS AND POWER ----- ###
-    if plot_training_loss and power_data is not None:
-        print("\nPlotting combined loss and power...")
+    ### ----- PLOT COMBINED LOSS, POWER, AND WEIGHT POWER ----- ###
+    weight_power_in_combined = False
+    if plot_training_loss_bool and power_data is not None:
+        print("\nPlotting combined loss, power, and weight power...")
         x_values = steps if training_mode == "online" else epochs
         group_label = f"C{p}"
-        viz.plot_loss_and_power(
+        weight_kw = (
+            {
+                "param_hist": param_hist,
+                "param_save_indices": param_save_indices,
+                "p": p,
+                "group_name": "cn",
+            }
+            if plot_w_dominant_irrep_fraction_bool
+            else {}
+        )
+        weight_power_in_combined = viz.plot_loss_power_and_weight_power(
             x_values=x_values,
             train_loss_hist=train_loss_hist,
             x_label=x_label_steps,
             power_data=power_data,
-            save_path=os.path.join(run_dir, "loss_and_power.pdf"),
+            save_path=os.path.join(run_dir, "loss_power_and_weight_power.pdf"),
             title=(
                 f"{group_label} Training"
                 f" (k={k}, lr={config['training']['learning_rate']},"
                 f" init={config['model']['init_scale']:.0e},"
                 f" h={config['model']['hidden_dim']}, {config['training']['optimizer']})"
             ),
+            **weight_kw,
         )
 
-    print(f"\n\u2713 All C{p} plots generated successfully!")
+    if plot_w_dominant_irrep_fraction_bool and not weight_power_in_combined:
+        print("Plotting W-row dominant irrep fraction over time...")
+        fig_w = viz.plot_w_dominant_irrep_fraction(
+            param_hist=param_hist,
+            param_save_indices=param_save_indices,
+            p=p,
+            x_label=x_label_steps,
+            group_name="cn",
+            save_path=os.path.join(run_dir, "w_dominant_irrep_fraction.pdf"),
+            show=False,
+        )
+        if fig_w is None:
+            print(
+                "  (skipped w_dominant_irrep_fraction: need W or W_out with second dim"
+                f" {p})"
+            )
+
+    viz.maybe_save_w_dominant_irrep_fraction_npz(
+        run_dir,
+        param_hist,
+        param_save_indices,
+        config,
+        group=None,
+    )
+    print(f"\n✓ All C{p} plots generated successfully!")
 
 
 def produce_plots_group(
@@ -769,10 +862,13 @@ def produce_plots_group(
 
     print(f"\n=== Generating Analysis Plots ({group_label}) ===")
 
-    plots = config.get("analysis", {}).get("plots", {})
-    plot_training_loss = plots.get("training_loss", True)
-    plot_predictions = plots.get("predictions", True)
-    plot_power_spectrum = plots.get("power_spectrum", True)
+    plots_bool_dict = config.get("analysis", {}).get("plots", {})
+    plot_training_loss_bool = plots_bool_dict.get("training_loss", True)
+    plot_predictions_bool = plots_bool_dict.get("predictions", True)
+    plot_power_spectrum = plots_bool_dict.get("power_spectrum", True)
+    plot_w_dominant_irrep_fraction_bool = plots_bool_dict.get(
+        "w_dominant_irrep_fraction", True
+    )
 
     group_order = group.order()
 
@@ -854,7 +950,7 @@ def produce_plots_group(
     print(f"Analysis checkpoints: {checkpoint_indices} (out of {total_checkpoints})")
 
     ### ----- PLOT TRAINING LOSS ----- ###
-    if plot_training_loss:
+    if plot_training_loss_bool:
         print("\nPlotting training loss...")
 
         _, axes = plt.subplots(2, 2, figsize=(12, 10))
@@ -877,21 +973,21 @@ def produce_plots_group(
         if yscale == "log":
             ax.set_ylim(bottom=1.0)
 
-    lr = config["training"]["learning_rate"]
-    hidden_dim = config["model"]["hidden_dim"]
-    init_scale = config["model"]["init_scale"]
-    plt.suptitle(
-        f"{group_label} Composition (k={k}, lr={lr}, h={hidden_dim}, init={init_scale:.0e})",
-        fontsize=14,
-    )
-    plt.tight_layout()
-    training_loss_path = os.path.join(run_dir, "training_loss.pdf")
-    plt.savefig(training_loss_path, bbox_inches="tight", dpi=150)
-    plt.close()
-    print(f"  ✓ Saved {training_loss_path}")
+        lr = config["training"]["learning_rate"]
+        hidden_dim = config["model"]["hidden_dim"]
+        init_scale = config["model"]["init_scale"]
+        plt.suptitle(
+            f"{group_label} Composition (k={k}, lr={lr}, h={hidden_dim}, init={init_scale:.0e})",
+            fontsize=14,
+        )
+        plt.tight_layout()
+        training_loss_path = os.path.join(run_dir, "training_loss.pdf")
+        plt.savefig(training_loss_path, bbox_inches="tight", dpi=150)
+        plt.close()
+        print(f"  ✓ Saved {training_loss_path}")
 
     ### ----- PLOT MODEL PREDICTIONS OVER TIME ----- ###
-    if plot_predictions:
+    if plot_predictions_bool:
         print("\nPlotting model predictions over time...")
         viz.plot_predictions_group(
             model=model,
@@ -929,23 +1025,61 @@ def produce_plots_group(
         print(f"  ✓ Saved {os.path.join(run_dir, 'power_spectrum_analysis.pdf')}")
         np.savez(run_dir / "power_data.npz", **power_data)
 
-    ### ----- PLOT COMBINED LOSS AND POWER ----- ###
-    if plot_training_loss and power_data is not None:
-        print("\nPlotting combined loss and power...")
-        viz.plot_loss_and_power(
+    ### ----- PLOT COMBINED LOSS, POWER, AND WEIGHT POWER ----- ###
+    weight_power_in_combined = False
+    if plot_training_loss_bool and power_data is not None:
+        print("\nPlotting combined loss, power, and weight power...")
+        weight_kw = (
+            {
+                "param_hist": param_hist,
+                "param_save_indices": param_save_indices,
+                "p": group_order,
+                "group_name": group_name,
+                "group": group,
+            }
+            if plot_w_dominant_irrep_fraction_bool
+            else {}
+        )
+        weight_power_in_combined = viz.plot_loss_power_and_weight_power(
             x_values=x_values,
             train_loss_hist=train_loss_hist,
             x_label=x_label,
             power_data=power_data,
-            save_path=os.path.join(run_dir, "loss_and_power.pdf"),
+            save_path=os.path.join(run_dir, "loss_power_and_weight_power.pdf"),
             title=(
                 f"{group_label} Training"
                 f" (k={k}, lr={config['training']['learning_rate']},"
                 f" init={config['model']['init_scale']:.0e},"
                 f" h={config['model']['hidden_dim']}, {config['training']['optimizer']})"
             ),
+            **weight_kw,
         )
 
+    if plot_w_dominant_irrep_fraction_bool and not weight_power_in_combined:
+        print("\nPlotting W-row dominant irrep fraction over time...")
+        fig_w = viz.plot_w_dominant_irrep_fraction(
+            param_hist=param_hist,
+            param_save_indices=param_save_indices,
+            p=group_order,
+            x_label=x_label,
+            group_name=group_name,
+            group=group,
+            save_path=os.path.join(run_dir, "w_dominant_irrep_fraction.pdf"),
+            show=False,
+        )
+        if fig_w is None:
+            print(
+                "  (skipped w_dominant_irrep_fraction: need W or W_out with second dim"
+                f" {group_order} matching escnn group order)"
+            )
+
+    viz.maybe_save_w_dominant_irrep_fraction_npz(
+        run_dir,
+        param_hist,
+        param_save_indices,
+        config,
+        group=group,
+    )
     print(f"\n✓ All {group_label} plots generated successfully!")
 
 
@@ -1545,6 +1679,8 @@ def train_single_run(config: dict, run_dir: Path = None) -> dict:
         max_steps_or_epochs = num_steps if training_mode == "online" else epochs
         results["converged"] = final_step < max_steps_or_epochs
 
+    sync_runs_data_cache(run_dir, config)
+
     return results
 
 
@@ -1565,6 +1701,40 @@ GROUP_CONFIG_MAP = {
     "Oh": "src/configs/config_oh.yaml",
     "A5": "src/configs/config_a5.yaml",
 }
+
+
+def _group_key_for_combined_plot(config: dict) -> str | None:
+    """Return GROUP_CONFIG_MAP key if *config* matches that group's reference YAML, else None."""
+    for key, path in GROUP_CONFIG_MAP.items():
+        ref = load_config(path)
+        if _group_matches(config, ref):
+            return key
+    return None
+
+
+def sync_runs_data_cache(run_dir: Path, config: dict) -> None:
+    """Copy key plot artefacts into ``runs_data/<GROUP_KEY>/`` for :func:`make_combined_plot`.
+
+    Copies ``train_loss_history.npy``, ``power_data.npz``, ``config.yaml``,
+    ``w_dominant_irrep_fraction.npz``, and ``param_save_indices.npy`` when present.
+    """
+    key = _group_key_for_combined_plot(config)
+    if key is None:
+        return
+    dest = Path("runs_data") / key
+    dest.mkdir(parents=True, exist_ok=True)
+    run_dir = Path(run_dir)
+    for name in (
+        "train_loss_history.npy",
+        "power_data.npz",
+        "config.yaml",
+        "w_dominant_irrep_fraction.npz",
+        "param_save_indices.npy",
+    ):
+        src = run_dir / name
+        if src.exists():
+            shutil.copy2(src, dest / name)
+    print(f"  ✓ Updated runs_data cache: {dest}")
 
 
 def _auto_device():
@@ -1643,6 +1813,12 @@ def _estimate_training_time(group_key, target_epochs, runs_root="runs"):
 def make_combined_plot(groups=None):
     """Orchestrate: find or produce runs for each group, then combine.
 
+    Writes ``combined_loss_and_power.pdf`` (three rows per group: loss, power,
+    W dominant-mode fraction) via :func:`viz.plot_combined_loss_and_power`.
+    Cached runs under ``runs_data/<GROUP>/`` should include
+    ``w_dominant_irrep_fraction.npz`` (written when you train a matching config;
+    see :func:`sync_runs_data_cache`).
+
     Automatically uses CUDA when available.  Before executing any work,
     prints a plan listing which groups are ready, which will be
     regenerated, and which require full training, together with an
@@ -1669,7 +1845,11 @@ def make_combined_plot(groups=None):
             continue
 
         cached = RUNS_DATA / g
-        if (cached / "power_data.npz").exists() and (cached / "train_loss_history.npy").exists():
+        if (
+            (cached / "power_data.npz").exists()
+            and (cached / "train_loss_history.npy").exists()
+            and (cached / "w_dominant_irrep_fraction.npz").exists()
+        ):
             plan.append({"group": g, "action": "cached", "run_dir": cached, "est_sec": 0})
             continue
 
@@ -1766,7 +1946,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--combined-plot",
         action="store_true",
-        help="Produce the combined 2x5 loss-and-power figure for C11, C5xC5, D5, Oh, A5",
+        help="Produce combined_loss_and_power.pdf (3 rows x N groups: loss, power, W dominant fraction)",
     )
 
     args = parser.parse_args()

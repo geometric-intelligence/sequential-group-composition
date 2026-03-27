@@ -200,6 +200,51 @@ class TestTopkTemplateFreqs:
         assert top_freqs == []
 
 
+class TestPowersPerNeuronRowsCyclic:
+    """Tests for power.powers_per_neuron_rows_cyclic."""
+
+    def test_1d_matches_cyclicpower(self):
+        """Each row must match CyclicPower on that row (C_n)."""
+        p = 10
+        h = 3
+        W = np.random.RandomState(1).randn(h, p)
+        out = power.powers_per_neuron_rows_cyclic(W, template_dim=1)
+        assert out.shape == (h, (p // 2) + 1)
+        for i in range(h):
+            np.testing.assert_allclose(
+                out[i], power.CyclicPower(W[i], template_dim=1).power, rtol=1e-10
+            )
+
+    def test_2d_rectangular_matches_cyclicpower(self):
+        p1, p2 = 2, 3
+        h = 2
+        W = np.random.RandomState(2).randn(h, p1 * p2)
+        out = power.powers_per_neuron_rows_cyclic(
+            W, template_dim=2, p1=p1, p2=p2
+        )
+        cp0 = power.CyclicPower(W[0], template_dim=2, p1=p1, p2=p2)
+        assert out.shape[1] == cp0.power.size
+        np.testing.assert_allclose(out[0], cp0.power.ravel(), rtol=1e-10)
+
+
+class TestPowersPerNeuronRows:
+    """Tests for power.powers_per_neuron_rows."""
+
+    def test_matches_rowwise_grouppower(self):
+        """Each row must match GroupPower on that row."""
+        from escnn.group import DihedralGroup
+
+        group = DihedralGroup(3)
+        h, n = 5, group.order()
+        W = np.random.RandomState(0).randn(h, n)
+        out = power.powers_per_neuron_rows(W, group)
+        assert out.shape == (h, len(group.irreps()))
+        for i in range(h):
+            np.testing.assert_allclose(
+                out[i], power.GroupPower(W[i], group).power, rtol=1e-10
+            )
+
+
 class TestGroupPower:
     """Tests for power.GroupPower class."""
 

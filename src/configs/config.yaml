@@ -139,3 +139,4 @@ analysis:
     predictions: true        # predictions_over_time.pdf
     power_spectrum: true     # power_spectrum_analysis.pdf (cn / group only)
     wmix: true               # wmix_frequency_structure.pdf (cnxcn + QuadraticRNN only)
+    w_dominant_irrep_fraction: true  # w_dominant_irrep_fraction.pdf (TwoLayerNet W or RNN W_out.T)
