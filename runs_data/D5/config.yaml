@@ -2,6 +2,11 @@ analysis:
   checkpoints:
   - 0.0
   - 1.0
+  plots:
+    power_spectrum: true
+    predictions: true
+    training_loss: true
+    w_dominant_irrep_fraction: true
 data:
   batch_size: 128
   group_n: 5
@@ -16,7 +21,7 @@ data:
   - 20.0
   seed: 10
   template_type: custom_fourier
-device: cuda:0
+device: cuda:1
 model:
   hidden_dim: 200
   init_scale: 1.0e-07

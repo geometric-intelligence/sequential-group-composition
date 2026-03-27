@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.ticker import MaxNLocator
@@ -99,6 +101,11 @@ def _permutation_from_groups_with_dead(
         boundaries.append(len(perm))
 
     return np.array(perm, dtype=int), ordered_keys, boundaries
+
+
+def _training_loss_log_y_floor(ax):
+    """After setting training loss to log-y, match main.py and floor the axis at 1.0."""
+    ax.set_ylim(bottom=1e-1)
 
 
 def _add_line_labels(ax, lines_info, fontsize=12):
@@ -482,6 +489,350 @@ def _hidden_by_group_weights_from_state_dict(sd: dict) -> np.ndarray | None:
     return None
 
 
+def _w_dominant_mode_colors(n_modes: int) -> list:
+    """Colors for spectral modes / irreps (matches standalone ``plot_w_dominant_irrep_fraction``)."""
+    cmap = plt.colormaps.get_cmap("tab20").resampled(max(n_modes, 1))
+    manual_colors = {
+        0: "tab:blue",
+        1: "tab:orange",
+        2: "tab:red",
+        3: "tab:green",
+        4: "tab:brown",
+        5: "tab:purple",
+    }
+    return [manual_colors.get(i, cmap(i)) for i in range(n_modes)]
+
+
+def mode_colors_aligned_with_power_plot(
+    n_modes: int,
+    top_irrep_indices,
+    colors_line,
+) -> list:
+    """One color per mode index 0..n_modes-1, matching :func:`plot_power_cn` / ``plot_power_group``.
+
+    For each irrep/mode index that appears in the power-over-time plot, use that plot's line color.
+    Other modes keep :func:`_w_dominant_mode_colors` so the W-row can still show unracked neurons.
+    """
+    base = _w_dominant_mode_colors(n_modes)
+    out = list(base)
+    top_irrep_indices = np.asarray(top_irrep_indices).ravel()
+    colors_line = list(colors_line)
+    for i, idx in enumerate(top_irrep_indices):
+        idx = int(idx)
+        if 0 <= idx < n_modes and i < len(colors_line):
+            out[idx] = colors_line[i]
+    return out
+
+
+def compute_w_dominant_irrep_fraction_data(
+    param_hist: list,
+    param_save_indices: list | np.ndarray,
+    p: int,
+    group_name: str,
+    group=None,
+    p1: int | None = None,
+    p2: int | None = None,
+    num_points: int = 1000,
+    active_energy_thresh: float = 1e-4,
+) -> dict | None:
+    """Compute per-neuron dominant-mode fraction curves (same math as ``plot_w_dominant_irrep_fraction``).
+
+    Returns a dict suitable for :func:`save_w_dominant_irrep_fraction_npz` and
+    :func:`draw_w_dominant_irrep_fraction_ax`, or ``None`` if not applicable.
+    """
+    import src.power as power
+
+    if not param_hist:
+        return None
+
+    use_cyclic = group_name in ("cn", "cnxcn")
+    if not use_cyclic and group is None:
+        return None
+    if group_name == "cnxcn" and (p1 is None or p2 is None):
+        return None
+
+    W0 = _hidden_by_group_weights_from_state_dict(param_hist[0])
+    if W0 is None:
+        return None
+    if W0.shape[1] != p:
+        return None
+    if use_cyclic:
+        if group_name == "cnxcn" and p != p1 * p2:
+            return None
+    elif p != group.order():
+        return None
+
+    hidden_size = W0.shape[0]
+
+    if use_cyclic:
+        if group_name == "cn":
+            probe = power.powers_per_neuron_rows_cyclic(W0[:1], template_dim=1)
+        else:
+            probe = power.powers_per_neuron_rows_cyclic(
+                W0[:1], template_dim=2, p1=p1, p2=p2
+            )
+        n_modes = probe.shape[1]
+        ylabel = (
+            r"Fraction in final dominant mode ($E_{\mathrm{dom}}/\max_t E_{\mathrm{tot}}$)"
+        )
+    else:
+        n_modes = len(group.irreps())
+        ylabel = r"Fraction in final dominant irrep ($E_{\mathrm{dom}}/\max_t E_{\mathrm{tot}}$)"
+
+    n_snap = len(param_hist)
+    max_idx = max(0, n_snap - 1)
+    if max_idx == 0:
+        steps = np.array([0], dtype=int)
+    else:
+        steps = np.unique(np.logspace(0, np.log10(max_idx), num_points, dtype=int))
+        steps = np.sort(np.unique(np.concatenate([[0], steps])))
+
+    W_power_over_time = []
+    for step in steps:
+        W = _hidden_by_group_weights_from_state_dict(param_hist[step])
+        if W is None or W.shape != (hidden_size, p):
+            return None
+        if use_cyclic:
+            if group_name == "cn":
+                row_powers = power.powers_per_neuron_rows_cyclic(
+                    W, template_dim=1
+                )
+            else:
+                row_powers = power.powers_per_neuron_rows_cyclic(
+                    W, template_dim=2, p1=p1, p2=p2
+                )
+        else:
+            row_powers = power.powers_per_neuron_rows(W, group)
+        W_power_over_time.append(row_powers)
+
+    W_power_over_time = np.array(W_power_over_time)
+    final_power = W_power_over_time[-1]
+    dominant_idx = np.argmax(final_power, axis=1)
+
+    dominant_fraction_over_time = np.zeros((len(steps), hidden_size))
+    for h in range(hidden_size):
+        k = dominant_idx[h]
+        dominant_energy = W_power_over_time[:, h, k]
+        total_energy = W_power_over_time[:, h, :].sum(axis=1)
+        max_tot = np.max(total_energy)
+        if max_tot >= active_energy_thresh:
+            dominant_fraction_over_time[:, h] = dominant_energy / max_tot
+        else:
+            dominant_fraction_over_time[:, h] = np.nan
+
+    psi = np.asarray(param_save_indices, dtype=float)
+    x_plot = psi[steps]
+
+    return {
+        "x_plot": x_plot,
+        "dominant_fraction_over_time": dominant_fraction_over_time,
+        "dominant_idx": dominant_idx.astype(np.int64),
+        "n_modes": int(n_modes),
+        "ylabel": ylabel,
+    }
+
+
+def save_w_dominant_irrep_fraction_npz(path: str | Path, data: dict) -> None:
+    """Save dominant-fraction curves to ``w_dominant_irrep_fraction.npz`` (used by combined plot / runs_data)."""
+    path = Path(path)
+    np.savez_compressed(
+        path,
+        x_plot=np.asarray(data["x_plot"], dtype=np.float64),
+        dominant_fraction_over_time=np.asarray(data["dominant_fraction_over_time"], dtype=np.float64),
+        dominant_idx=np.asarray(data["dominant_idx"], dtype=np.int64),
+        n_modes=np.int32(data["n_modes"]),
+        ylabel=np.array(data["ylabel"], dtype=object),
+    )
+
+
+def load_w_dominant_irrep_fraction_npz(path: str | Path) -> dict:
+    """Load dict returned by :func:`save_w_dominant_irrep_fraction_npz`."""
+    path = Path(path)
+    z = np.load(path, allow_pickle=True)
+    try:
+        return {
+            "x_plot": np.asarray(z["x_plot"], dtype=np.float64),
+            "dominant_fraction_over_time": np.asarray(
+                z["dominant_fraction_over_time"], dtype=np.float64
+            ),
+            "dominant_idx": np.asarray(z["dominant_idx"], dtype=np.int64),
+            "n_modes": int(z["n_modes"]),
+            "ylabel": str(z["ylabel"].item()),
+        }
+    finally:
+        z.close()
+
+
+def maybe_save_w_dominant_irrep_fraction_npz(
+    run_dir: str | Path,
+    param_hist: list,
+    param_save_indices: list | np.ndarray,
+    config: dict,
+    group=None,
+) -> bool:
+    """Compute and save ``w_dominant_irrep_fraction.npz`` when the model has group readout weights."""
+    run_dir = Path(run_dir)
+    gn = config["data"]["group_name"]
+    if gn == "cn":
+        p = config["data"]["p"]
+        data = compute_w_dominant_irrep_fraction_data(
+            param_hist, param_save_indices, p, "cn"
+        )
+    elif gn == "cnxcn":
+        p1, p2 = config["data"]["p1"], config["data"]["p2"]
+        data = compute_w_dominant_irrep_fraction_data(
+            param_hist,
+            param_save_indices,
+            p1 * p2,
+            "cnxcn",
+            p1=p1,
+            p2=p2,
+        )
+    elif gn in ("dihedral", "octahedral", "A5"):
+        if group is None:
+            return False
+        data = compute_w_dominant_irrep_fraction_data(
+            param_hist,
+            param_save_indices,
+            group.order(),
+            gn,
+            group=group,
+        )
+    else:
+        return False
+    if data is None:
+        return False
+    out = run_dir / "w_dominant_irrep_fraction.npz"
+    save_w_dominant_irrep_fraction_npz(out, data)
+    print(f"  ✓ Saved {out.name} (dominant-mode fraction curves for combined plot / runs_data)")
+    return True
+
+
+def load_w_dominant_irrep_fraction_for_run_dir(run_dir: str | Path) -> dict | None:
+    """Load ``w_dominant_irrep_fraction.npz`` from *run_dir*, or compute from ``param_history.pt`` + config.
+
+    Used by :func:`plot_combined_loss_and_power`. Requires ``param_save_indices.npy`` when falling
+    back to raw checkpoints (same as power plots).
+    """
+    import torch
+    import yaml
+
+    run_dir = Path(run_dir)
+    npz = run_dir / "w_dominant_irrep_fraction.npz"
+    if npz.exists():
+        return load_w_dominant_irrep_fraction_npz(npz)
+
+    ph_path = run_dir / "param_history.pt"
+    cfg_path = run_dir / "config.yaml"
+    psi_path = run_dir / "param_save_indices.npy"
+    if not ph_path.exists() or not cfg_path.exists() or not psi_path.exists():
+        return None
+
+    with open(cfg_path) as f:
+        config = yaml.safe_load(f)
+    param_hist = torch.load(ph_path, map_location="cpu", weights_only=False)
+    param_save_indices = np.load(psi_path).tolist()
+
+    gn = config["data"]["group_name"]
+    if gn == "cn":
+        p = config["data"]["p"]
+        return compute_w_dominant_irrep_fraction_data(
+            param_hist, param_save_indices, p, "cn"
+        )
+    if gn == "cnxcn":
+        p1, p2 = config["data"]["p1"], config["data"]["p2"]
+        return compute_w_dominant_irrep_fraction_data(
+            param_hist,
+            param_save_indices,
+            p1 * p2,
+            "cnxcn",
+            p1=p1,
+            p2=p2,
+        )
+    if gn == "dihedral":
+        from escnn.group import DihedralGroup
+
+        group = DihedralGroup(N=config["data"].get("group_n", 3))
+    elif gn == "octahedral":
+        from escnn.group import Octahedral
+
+        group = Octahedral()
+    elif gn == "A5":
+        from escnn.group import Icosahedral
+
+        group = Icosahedral()
+    else:
+        return None
+
+    return compute_w_dominant_irrep_fraction_data(
+        param_hist,
+        param_save_indices,
+        group.order(),
+        gn,
+        group=group,
+    )
+
+
+def draw_w_dominant_irrep_fraction_ax(
+    ax,
+    data: dict,
+    x_label: str,
+    *,
+    apply_style_axes: bool = False,
+    xlabel_fontsize: float = 11,
+    ylabel_fontsize: float = 11,
+    tick_labelsize: float | None = None,
+    lw: float = 1.5,
+    alpha: float = 0.5,
+    show_grid: bool = True,
+    grid_alpha: float = 0.3,
+    show_ylabel: bool = True,
+    mode_colors: list | None = None,
+):
+    """Draw dominant-fraction curves on *ax* (shared helpers for standalone and combined figures).
+
+    When ``apply_style_axes`` is True, uses :func:`style_axes` and disables grid (standalone PDF).
+    Set ``show_ylabel`` to False for non-leading columns in multi-column layouts.
+    Pass ``mode_colors`` (length ``n_modes``) to match line colors in the power panel, e.g. from
+    :func:`mode_colors_aligned_with_power_plot`.
+    """
+    n_modes = int(data["n_modes"])
+    if mode_colors is not None and len(mode_colors) == n_modes:
+        colors = list(mode_colors)
+    else:
+        colors = _w_dominant_mode_colors(n_modes)
+    x_plot = np.asarray(data["x_plot"])
+    frac = np.asarray(data["dominant_fraction_over_time"])
+    dom_idx = np.asarray(data["dominant_idx"], dtype=int)
+    ylabel = data["ylabel"]
+    hidden_size = frac.shape[1]
+
+    for h in range(hidden_size):
+        if not np.any(np.isfinite(frac[:, h])):
+            continue
+        k = int(dom_idx[h])
+        ax.plot(
+            x_plot,
+            frac[:, h],
+            color=colors[k],
+            lw=lw,
+            alpha=alpha,
+        )
+
+    ax.set_xscale("log")
+    ax.set_ylim(0, 1.02)
+    ax.set_xlabel(x_label, fontsize=xlabel_fontsize)
+    if show_ylabel:
+        ax.set_ylabel(ylabel, fontsize=ylabel_fontsize)
+    if tick_labelsize is not None:
+        ax.tick_params(axis="both", which="major", labelsize=tick_labelsize)
+    if apply_style_axes:
+        style_axes(ax)
+        ax.grid(False)
+    elif show_grid:
+        ax.grid(True, alpha=grid_alpha)
+
+
 def plot_w_dominant_irrep_fraction(
     param_hist: list,
     param_save_indices: list[int],
@@ -551,119 +902,38 @@ def plot_w_dominant_irrep_fraction(
 
     Returns:
         ``matplotlib.figure.Figure`` or ``None`` if the model has no ``W`` / ``W_out`` parameters
+
+    See Also:
+        :func:`compute_w_dominant_irrep_fraction_data`,
+        :func:`maybe_save_w_dominant_irrep_fraction_npz`,
+        :func:`plot_combined_loss_and_power`
     """
-    import src.power as power
-
-    if not param_hist:
+    data = compute_w_dominant_irrep_fraction_data(
+        param_hist,
+        param_save_indices,
+        p,
+        group_name,
+        group=group,
+        p1=p1,
+        p2=p2,
+        num_points=num_points,
+        active_energy_thresh=active_energy_thresh,
+    )
+    if data is None:
         return None
-
-    use_cyclic = group_name in ("cn", "cnxcn")
-    if not use_cyclic and group is None:
-        return None
-    if group_name == "cnxcn" and (p1 is None or p2 is None):
-        return None
-
-    W0 = _hidden_by_group_weights_from_state_dict(param_hist[0])
-    if W0 is None:
-        return None
-    if W0.shape[1] != p:
-        return None
-    if use_cyclic:
-        if group_name == "cnxcn" and p != p1 * p2:
-            return None
-    elif p != group.order():
-        return None
-
-    hidden_size = W0.shape[0]
-
-    if use_cyclic:
-        if group_name == "cn":
-            probe = power.powers_per_neuron_rows_cyclic(W0[:1], template_dim=1)
-        else:
-            probe = power.powers_per_neuron_rows_cyclic(
-                W0[:1], template_dim=2, p1=p1, p2=p2
-            )
-        n_modes = probe.shape[1]
-        ylabel = (
-            r"Fraction in final dominant mode ($E_{\mathrm{dom}}/\max_t E_{\mathrm{tot}}$)"
-        )
-    else:
-        n_modes = len(group.irreps())
-        ylabel = r"Fraction in final dominant irrep ($E_{\mathrm{dom}}/\max_t E_{\mathrm{tot}}$)"
-
-    cmap = plt.colormaps.get_cmap("tab20").resampled(max(n_modes, 1))
-    manual_colors = {
-        0: "tab:blue",
-        1: "tab:orange",
-        2: "tab:red",
-        3: "tab:green",
-        4: "tab:brown",
-        5: "tab:purple",
-    }
-    colors = [manual_colors.get(i, cmap(i)) for i in range(n_modes)]
-
-    n_snap = len(param_hist)
-    max_idx = max(0, n_snap - 1)
-    if max_idx == 0:
-        steps = np.array([0], dtype=int)
-    else:
-        steps = np.unique(np.logspace(0, np.log10(max_idx), num_points, dtype=int))
-        steps = np.sort(np.unique(np.concatenate([[0], steps])))
-
-    W_power_over_time = []
-    for step in steps:
-        W = _hidden_by_group_weights_from_state_dict(param_hist[step])
-        if W is None or W.shape != (hidden_size, p):
-            return None
-        if use_cyclic:
-            if group_name == "cn":
-                row_powers = power.powers_per_neuron_rows_cyclic(
-                    W, template_dim=1
-                )
-            else:
-                row_powers = power.powers_per_neuron_rows_cyclic(
-                    W, template_dim=2, p1=p1, p2=p2
-                )
-        else:
-            row_powers = power.powers_per_neuron_rows(W, group)
-        W_power_over_time.append(row_powers)
-
-    W_power_over_time = np.array(W_power_over_time)
-    final_power = W_power_over_time[-1]
-    dominant_idx = np.argmax(final_power, axis=1)
-
-    dominant_fraction_over_time = np.zeros((len(steps), hidden_size))
-    for h in range(hidden_size):
-        k = dominant_idx[h]
-        dominant_energy = W_power_over_time[:, h, k]
-        total_energy = W_power_over_time[:, h, :].sum(axis=1)
-        max_tot = np.max(total_energy)
-        if max_tot >= active_energy_thresh:
-            dominant_fraction_over_time[:, h] = dominant_energy / max_tot
-        else:
-            dominant_fraction_over_time[:, h] = np.nan
-
-    x_plot = np.array(param_save_indices, dtype=float)[steps]
 
     fig, ax = plt.subplots(figsize=(8, 6))
-    for h in range(hidden_size):
-        if not np.any(np.isfinite(dominant_fraction_over_time[:, h])):
-            continue
-        k = int(dominant_idx[h])
-        ax.plot(
-            x_plot,
-            dominant_fraction_over_time[:, h],
-            color=colors[k],
-            lw=2,
-            alpha=0.5,
-        )
-
-    ax.set_xscale("log")
-    ax.set_ylim(0, 1.02)
-    ax.set_xlabel(x_label, fontsize=24)
-    ax.set_ylabel(ylabel, fontsize=19)
-    style_axes(ax)
-    ax.grid(False)
+    draw_w_dominant_irrep_fraction_ax(
+        ax,
+        data,
+        x_label,
+        apply_style_axes=True,
+        xlabel_fontsize=24,
+        ylabel_fontsize=19,
+        lw=2.0,
+        alpha=0.5,
+        show_grid=False,
+    )
     plt.tight_layout()
 
     if save_path:
@@ -1552,6 +1822,7 @@ def plot_loss_and_power(
     ax_loss.plot(x_arr[pos_mask], loss_arr[pos_mask], lw=2, color="#1f77b4")
     ax_loss.set_xscale("log")
     ax_loss.set_yscale("log")
+    _training_loss_log_y_floor(ax_loss)
     ax_loss.set_ylabel("Training Loss", fontsize=11)
     ax_loss.grid(True, alpha=0.3)
     ax_loss.tick_params(labelbottom=False)
@@ -1594,27 +1865,160 @@ def plot_loss_and_power(
     plt.close()
 
 
+def plot_loss_power_and_weight_power(
+    x_values,
+    train_loss_hist,
+    x_label,
+    power_data,
+    save_path=None,
+    title=None,
+    **weight_kw,
+):
+    """Create a 3-row plot: training loss, output power, and W dominant-mode fraction (optional).
+
+    The first two rows match :func:`plot_loss_and_power`. The third row is drawn when
+    ``weight_kw`` includes ``param_hist`` and group fields (same as
+    :func:`plot_w_dominant_irrep_fraction`).
+
+    Returns:
+        True if the third row was drawn, else False.
+    """
+    param_hist = weight_kw.get("param_hist")
+    nrows = 3 if param_hist is not None else 2
+    fig, axes = plt.subplots(
+        nrows,
+        1,
+        figsize=(4, 4 * nrows),
+        sharex=True,
+        gridspec_kw={"hspace": 0.10},
+    )
+    if nrows == 2:
+        ax_loss, ax_power = axes
+    else:
+        ax_loss, ax_power, ax_w = axes
+
+    x_arr = np.asarray(x_values)
+    loss_arr = np.asarray(train_loss_hist)
+    pos_mask = x_arr > 0
+    ax_loss.plot(x_arr[pos_mask], loss_arr[pos_mask], lw=2, color="#1f77b4")
+    ax_loss.set_xscale("log")
+    ax_loss.set_yscale("log")
+    _training_loss_log_y_floor(ax_loss)
+    ax_loss.set_ylabel("Training Loss", fontsize=11)
+    ax_loss.grid(True, alpha=0.3)
+    if nrows == 3:
+        ax_loss.tick_params(labelbottom=False)
+
+    valid_epochs = power_data["valid_epochs"]
+    valid_model_powers = power_data["valid_model_powers"]
+    template_power = power_data["template_power"]
+    top_indices = power_data["top_irrep_indices"]
+    colors_line = power_data["colors_line"]
+    labels = power_data["labels"]
+
+    lines_info = []
+    for i, idx in enumerate(top_indices):
+        pv = valid_model_powers[:, idx]
+        ax_power.plot(valid_epochs, pv, "-", lw=2, color=colors_line[i])
+        ax_power.axhline(template_power[idx], linestyle="--", alpha=0.5, color=colors_line[i])
+        lines_info.append(
+            {
+                "x": valid_epochs,
+                "y": pv,
+                "label": labels[i],
+                "color": colors_line[i],
+            }
+        )
+    _add_line_labels(ax_power, lines_info, fontsize=10)
+
+    ax_power.set_xscale("log")
+    ax_power.set_ylabel("Power", fontsize=11)
+    ax_power.grid(True, alpha=0.3)
+    if nrows == 3:
+        ax_power.tick_params(labelbottom=False)
+    else:
+        ax_power.set_xlabel(x_label, fontsize=11)
+
+    weight_row = False
+    if param_hist is not None:
+        wdata = compute_w_dominant_irrep_fraction_data(
+            param_hist,
+            weight_kw["param_save_indices"],
+            weight_kw["p"],
+            weight_kw["group_name"],
+            group=weight_kw.get("group"),
+            p1=weight_kw.get("p1"),
+            p2=weight_kw.get("p2"),
+        )
+        if wdata is not None:
+            mc = mode_colors_aligned_with_power_plot(
+                int(wdata["n_modes"]),
+                top_indices,
+                colors_line,
+            )
+            draw_w_dominant_irrep_fraction_ax(
+                ax_w,
+                wdata,
+                x_label,
+                apply_style_axes=False,
+                xlabel_fontsize=11,
+                ylabel_fontsize=11,
+                lw=2.0,
+                alpha=0.5,
+                show_grid=True,
+                grid_alpha=0.3,
+                mode_colors=mc,
+            )
+            ax_w.set_xlabel(x_label, fontsize=11)
+            weight_row = True
+        else:
+            ax_w.set_xscale("log")
+            ax_w.text(
+                0.5,
+                0.5,
+                "W dominant fraction\n(not available for this model)",
+                ha="center",
+                va="center",
+                transform=ax_w.transAxes,
+                fontsize=10,
+            )
+            ax_w.set_xlabel(x_label, fontsize=11)
+
+    if title:
+        fig.suptitle(title, fontsize=12, fontweight="bold")
+
+    plt.tight_layout()
+    if save_path:
+        plt.savefig(save_path, bbox_inches="tight", dpi=150)
+        print(f"  ✓ Saved {save_path}")
+    plt.close()
+    return weight_row
+
+
 def plot_combined_loss_and_power(
     run_dirs,
     group_labels,
     save_path=None,
 ):
-    """Create a 2-row x N-column combined figure from multiple run directories.
+    """Create a 3-row x N-column combined figure from multiple run directories.
 
-    Top row: Log-Log training loss for each group.
-    Bottom row: Log-X power spectrum with inline labels for each group.
+    Rows (same fonts/grid/line weights across panels): (1) Log-Log training loss,
+    (2) Log-X output power vs template with inline labels, (3) per-neuron fraction of
+    spectral power in the **final-dominant** mode/irrep — the same quantity as
+    :func:`plot_w_dominant_irrep_fraction`.  Mode/irrep line colors in row 3 match row 2
+    for modes that appear in the power plot (see :func:`mode_colors_aligned_with_power_plot`).
 
-    Each run directory must contain train_loss_history.npy, power_data.npz,
-    and config.yaml.
+    Each run directory must contain ``train_loss_history.npy``, ``power_data.npz``, and
+    ``config.yaml``. For the third row, prefer ``w_dominant_irrep_fraction.npz`` (saved during
+    training via :func:`maybe_save_w_dominant_irrep_fraction_npz`); otherwise
+    ``param_history.pt`` and ``param_save_indices.npy`` are used to recompute curves.
     """
-    from pathlib import Path
-
     import yaml
 
     n_cols = len(run_dirs)
-    fig, axes = plt.subplots(2, n_cols, figsize=(5 * n_cols, 8))
+    fig, axes = plt.subplots(3, n_cols, figsize=(5 * n_cols, 12))
     if n_cols == 1:
-        axes = axes.reshape(2, 1)
+        axes = axes.reshape(3, 1)
 
     for col, (rd, label) in enumerate(zip(run_dirs, group_labels)):
         rd = Path(rd)
@@ -1631,12 +2035,13 @@ def plot_combined_loss_and_power(
             x_all = np.arange(len(loss_hist))
             x_label = "Epoch"
 
-        # -- Top row: Log-Log training loss --
+        # -- Row 0: Log-Log training loss --
         ax = axes[0, col]
         pos = x_all > 0
         ax.plot(x_all[pos], np.asarray(loss_hist)[pos], lw=1.5, color="#1f77b4")
         ax.set_xscale("log")
         ax.set_yscale("log")
+        _training_loss_log_y_floor(ax)
         ax.grid(True, alpha=0.3)
         ax.set_xlabel(x_label, fontsize=9)
         if col == 0:
@@ -1651,7 +2056,7 @@ def plot_combined_loss_and_power(
         hp_parts.append(cfg["training"]["optimizer"])
         ax.set_title(f"{label}\n({', '.join(hp_parts)})", fontsize=9)
 
-        # -- Bottom row: Log-X power spectrum --
+        # -- Row 1: Log-X power spectrum --
         ax = axes[1, col]
         valid_epochs = np.asarray(pd["valid_epochs"])
         valid_model_powers = np.asarray(pd["valid_model_powers"])
@@ -1680,6 +2085,46 @@ def plot_combined_loss_and_power(
         if col == 0:
             ax.set_ylabel("Power", fontsize=10)
         else:
+            ax.tick_params(labelleft=False)
+
+        # -- Row 2: W dominant-mode / irrep fraction (same as plot_w_dominant_irrep_fraction) --
+        ax = axes[2, col]
+        wdata = load_w_dominant_irrep_fraction_for_run_dir(rd)
+        if wdata is not None:
+            mode_colors = mode_colors_aligned_with_power_plot(
+                int(wdata["n_modes"]),
+                top_indices,
+                colors_line,
+            )
+            draw_w_dominant_irrep_fraction_ax(
+                ax,
+                wdata,
+                x_label,
+                apply_style_axes=False,
+                xlabel_fontsize=9,
+                ylabel_fontsize=10,
+                tick_labelsize=8,
+                lw=1.5,
+                alpha=0.5,
+                show_grid=True,
+                grid_alpha=0.3,
+                show_ylabel=(col == 0),
+                mode_colors=mode_colors,
+            )
+        else:
+            ax.text(
+                0.5,
+                0.5,
+                "No dominant-fraction data",
+                ha="center",
+                va="center",
+                transform=ax.transAxes,
+                fontsize=9,
+            )
+            ax.set_xscale("log")
+            ax.set_ylim(0, 1.02)
+        ax.set_xlabel(x_label, fontsize=9)
+        if col != 0:
             ax.tick_params(labelleft=False)
 
     fig.subplots_adjust(hspace=0.35, wspace=0.15, top=0.88)
