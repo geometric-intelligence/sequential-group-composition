@@ -14,11 +14,11 @@ data:
   num_samples: 1000           # Number of samples (used when mode='sampled')
 
 model:
-  model_type: SequentialMLP   # Model architecture: 'QuadraticRNN' | 'SequentialMLP' | 'TwoLayerNet'
+  model_type: TwoLayerMLP     # Model architecture: 'QuadraticRNN' | 'TwoLayerMLP'
+  nonlinearity: power          # Activation: 'power' (k-th power)
   hidden_dim: 300             # Hidden layer width (hidden_factor=30 * group_size=10)
   init_scale: 0.01            # Weight initialization scale
   return_all_outputs: false   # true = seq-to-seq, false = seq-to-one (final output only)
-  transform_type: quadratic   # Transform type (QuadraticRNN only): 'quadratic' | 'multiplicative'
 
 training:
   mode: offline               # Training mode: 'online' (fresh samples) | 'offline' (fixed dataset)

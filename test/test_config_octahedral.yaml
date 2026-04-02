@@ -11,13 +11,12 @@ data:
   powers: [0.0, 2000.0, 0.0, 0.0, 0.0]
 
 model:
-  model_type: TwoLayerNet
+  model_type: TwoLayerMLP
   hidden_dim: 10
   init_scale: 0.001
   nonlinearity: square
   output_scale: 1.0
   return_all_outputs: false
-  transform_type: quadratic
 
 training:
   mode: offline

@@ -112,9 +112,9 @@ def test_main_d3(temp_run_dir, mock_savefig):
     """Test main() with D3 dihedral group config.
 
     Full integration test: does NOT mock produce_plots_group so the entire
-    plotting pipeline (TwoLayerNet eval data via OfflineModularCompositionDataset.group_dataset, power spectrum)
+    plotting pipeline (TwoLayerMLP eval data via GroupCompositionDataset, power spectrum)
     is exercised. D3 (order 6) is the smallest group so this stays fast.
-    This validates the TwoLayerNet-compatible eval data path in produce_plots_group,
+    This validates the TwoLayerMLP-compatible eval data path in produce_plots_group,
     which is shared by octahedral and A5 (mocked in their tests for speed).
     """
     import src.main as main

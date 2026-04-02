@@ -3,258 +3,168 @@ import torch
 from torch import nn
 
 
-class TwoLayerNet(nn.Module):
-    """
-    Two-layer neural network for binary group composition.
+class TwoLayerMLP(nn.Module):
+    """Two-layer MLP for k-ary group composition.
 
-    Architecture:
-        x1_proj = x[:, :group_size] @ U.T    # First input projection
-        x2_proj = x[:, group_size:] @ V.T    # Second input projection
-        h = nonlinearity(x1_proj + x2_proj)  # Combined with nonlinearity
-        y = h @ W                            # Output projection
+    Architecture::
 
-    Parameters:
-        U: (hidden_size, group_size) - First input projection
-        V: (hidden_size, group_size) - Second input projection
-        W: (hidden_size, group_size) - Output projection
+        x_flat = x_seq.reshape(batch, k * group_size)
+        h = x_flat @ W_in.T                           # (batch, hidden_dim)
+        h = nonlinearity(h)                            # element-wise
+        y = h @ W_out.T * output_scale                 # (batch, group_size)
+
+    Attributes
+    ----------
+    k : int
+        Number of input group elements.
+    group_size : int
+        Dimension of each group-element vector.
+    hidden_dim : int
+        Hidden-layer width.
     """
 
     def __init__(
         self,
         group_size,
-        hidden_size=None,
+        hidden_dim=None,
+        k=2,
         nonlinearity="square",
         init_scale=1.0,
         output_scale=1.0,
     ):
         super().__init__()
         self.group_size = group_size
-        if hidden_size is None:
-            hidden_size = 50 * group_size
-        self.hidden_size = hidden_size
+        self.hidden_dim = hidden_dim if hidden_dim is not None else 50 * group_size
+        self.k = k
         self.nonlinearity = nonlinearity
         self.init_scale = init_scale
         self.output_scale = output_scale
 
-        # Initialize parameters
-        self.U = nn.Parameter(
-            self.init_scale
-            * torch.randn(hidden_size, self.group_size)
-            / np.sqrt(2 * self.group_size)
+        self.W_in = nn.Parameter(
+            init_scale
+            * torch.randn(self.hidden_dim, k * group_size)
+            / np.sqrt(k * group_size)
         )
-        self.V = nn.Parameter(
-            self.init_scale
-            * torch.randn(hidden_size, self.group_size)
-            / np.sqrt(2 * self.group_size)
-        )
-        self.W = nn.Parameter(
-            self.init_scale * torch.randn(hidden_size, self.group_size) / np.sqrt(self.group_size)
+        self.W_out = nn.Parameter(
+            init_scale
+            * torch.randn(group_size, self.hidden_dim)
+            / np.sqrt(self.hidden_dim)
         )
 
-    def forward(self, x):
-        # First layer (linear and combined)
-        x1 = x[:, : self.group_size] @ self.U.T
-        x2 = x[:, self.group_size :] @ self.V.T
-        x_combined = x1 + x2
+    def forward(self, x_seq):
+        """Forward pass.
 
-        # Apply nonlinearity activation
-        if self.nonlinearity == "relu":
-            x_combined = torch.relu(x_combined)
+        Parameters
+        ----------
+        x_seq : torch.Tensor, shape (batch, k, group_size)
+
+        Returns
+        -------
+        torch.Tensor, shape (batch, group_size)
+        """
+        batch_size = x_seq.shape[0]
+        k_actual = x_seq.shape[1]
+        assert k_actual == self.k, f"Expected k={self.k} inputs, got {k_actual}"
+
+        x_flat = x_seq.reshape(batch_size, self.k * self.group_size)
+        h = x_flat @ self.W_in.T
+
+        if self.nonlinearity == "power":
+            h = h**self.k
         elif self.nonlinearity == "square":
-            x_combined = x_combined**2
+            h = h**2
+        elif self.nonlinearity == "relu":
+            h = torch.relu(h)
         elif self.nonlinearity == "linear":
-            x_combined = x_combined
+            pass
         elif self.nonlinearity == "tanh":
-            x_combined = torch.tanh(x_combined)
+            h = torch.tanh(h)
         elif self.nonlinearity == "gelu":
-            gelu = torch.nn.GELU()
-            x_combined = gelu(x_combined)
+            h = torch.nn.functional.gelu(h)
         else:
             raise ValueError(f"Invalid nonlinearity '{self.nonlinearity}' provided.")
 
-        # Second layer (linear)
-        x_out = x_combined @ self.W
-
-        # Feature learning scaling
-        x_out *= self.output_scale
-
-        return x_out
+        y = h @ self.W_out.T * self.output_scale
+        return y
 
 
 class QuadraticRNN(nn.Module):
-    """
-    h0 = W_init x1
-    h_t = (W_mix h_{t-1} + W_drive x_t)^2   for t=1..k-1
-    yhat = W_out h_{k-1}
-    Note: This implementation uses k tokens total and applies the recurrence on tokens x1..x_k.
-    """
+    """Quadratic recurrent network for sequential group composition.
 
-    def __init__(
-        self,
-        p: int,
-        d: int,
-        template: torch.Tensor,  # put on device before passing to constructor
-        init_scale: float = 1e-2,
-        return_all_outputs: bool = False,
-        transform_type: str = "quadratic",  # 'quadratic' | 'multiplicative'
-    ) -> None:
-        """
-        Args:
-            p: int, dimension of the template (height and width)
-            d: int, dimension of the hidden state
-            init_scale: float, scale of weights at initialization
-            return_all_outputs: bool, whether to return all outputs at each step
-            template: torch.Tensor, the template to use for the model
-            transform_type: str, the type of transform to use ('quadratic' | 'multiplicative')
-            if 'quadratic', uses (h @ W_mix.T + x @ W_drive.T)^2
-            if 'multiplicative', uses h @ W_mix.T * x @ W_drive.T
-        """
-        super().__init__()
-        self.p = p
-        self.d = d
-        self.init_scale = init_scale
-        self.template = template
-        self.return_all_outputs = return_all_outputs
-        self.transform_type = transform_type
+    Recurrence::
 
-        # Params
-        self.W_in = nn.Parameter(init_scale * torch.randn(d, p) / torch.sqrt(torch.tensor(p)))
-        self.W_mix = nn.Parameter(init_scale * torch.randn(d, d) / torch.sqrt(torch.tensor(d)))
-        self.W_drive = nn.Parameter(init_scale * torch.randn(d, p) / torch.sqrt(torch.tensor(p)))
-        self.W_out = nn.Parameter(init_scale * torch.randn(p, d) / torch.sqrt(torch.tensor(d)))
+        h_0   = x_1 @ W_in.T
+        h_1   = (h_0 + x_2 @ W_drive.T) ** 2
+        h_t   = (h_{t-1} @ W_mix.T + x_{t+1} @ W_drive.T) ** 2   for t >= 2
+        y     = h_{k-1} @ W_out.T
 
-    def _apply_transformation(self, h1: torch.Tensor, h2: torch.Tensor) -> torch.Tensor:
-        if self.transform_type == "quadratic":
-            return (h1 + h2) ** 2
-        elif self.transform_type == "multiplicative":
-            return h1 * h2
-        else:
-            raise ValueError(f"Invalid transform type: {self.transform_type}")
-
-    def forward(self, x_seq: torch.Tensor) -> torch.Tensor:
-        """
-        x_seq: (batch, k, p)
-        returns:
-            if return_all_outputs=False: (batch, p) - only final output
-            if return_all_outputs=True: (batch, k, p) - output at each step
-
-        When k=2, this is equivalent to the 2-layer MLP.
-        When k>2, the W_drive is used to drive the recurrence.
-        """
-        batch_size = x_seq.shape[0]
-        k = x_seq.shape[1]
-        assert k >= 2, "Sequence length must be at least 2"
-
-        # Initialize
-        h_0 = x_seq[:, 0, :] @ self.W_in.T  # (B, d)
-        h_1 = x_seq[:, 1, :] @ self.W_drive.T  # (B, d)
-        h = self._apply_transformation(h_0, h_1)
-
-        if self.return_all_outputs:
-            # Store outputs at each step
-            outputs = []
-
-            # Output after first two tokens
-            y_1 = h @ self.W_out.T  # (B, p)
-            outputs.append(y_1)
-
-            # Recurrence
-            for t in range(2, k):
-                xt = x_seq[:, t, :]  # (B, p)
-                h = self._apply_transformation(h @ self.W_mix.T, xt @ self.W_drive.T)  # (B, d)
-
-                # Output after this token
-                y_t = h @ self.W_out.T  # (B, p)
-                outputs.append(y_t)
-
-            # Stack all outputs: (B, k-1, p)
-            # Note: k-1 because we need at least 2 tokens before first prediction
-            return torch.stack(outputs, dim=1)
-        else:
-            # Original behavior: only return final output
-            # Recurrence
-            for t in range(2, k):
-                xt = x_seq[:, t, :]  # (B, p)
-                h = self._apply_transformation(h @ self.W_mix.T, xt @ self.W_drive.T)  # (B, d)
-
-            y = h @ self.W_out.T  # (B, p)
-            return y
-
-
-class SequentialMLP(nn.Module):
-    """
-    MLP that processes k unordered input vectors by concatenating them.
-
-    Architecture:
-        x_concat = concat(x1, x2, ..., xk)  # shape: (batch, k*p)
-        h = x_concat @ W_in.T               # shape: (batch, hidden_size)
-        h_activated = h^k                    # k-th power activation
-        y = h_activated @ W_out.T           # shape: (batch, p)
-
-    Note: The inputs are unordered (not sequential), so the model is permutation-invariant
-    with respect to the ordering of the k inputs (ok for commutative groups!).
+    Attributes
+    ----------
+    k : int
+        Expected sequence length (number of group elements).
+    group_size : int
+        Dimension of each group-element vector.
+    hidden_dim : int
+        Hidden-state width.
     """
 
     def __init__(
         self,
-        p: int,
-        d: int,
-        template: torch.Tensor,
+        group_size: int,
+        hidden_dim: int,
         k: int,
         init_scale: float = 1e-2,
         return_all_outputs: bool = False,
     ) -> None:
-        """
-        Args:
-            p: int, dimension of each input vector
-            d: int, hidden dimension (hidden_size)
-            template: torch.Tensor, the template (for compatibility with infrastructure)
-            k: int, number of input vectors (sequence length)
-            init_scale: float, scale of weights at initialization
-            return_all_outputs: bool, for compatibility (always False for MLP)
-        """
         super().__init__()
-        self.p = p
-        self.d = d  # Hidden dimension
-        self.k = k  # Sequence length
+        self.group_size = group_size
+        self.hidden_dim = hidden_dim
+        self.k = k
         self.init_scale = init_scale
-        self.template = template
         self.return_all_outputs = return_all_outputs
 
-        # Parameters
-        # W_in: maps concatenated input (k*p) to hidden (d)
-        # W_out: maps hidden (d) to output (p)
         self.W_in = nn.Parameter(
-            init_scale * torch.randn(d, k * p) / torch.sqrt(torch.tensor(k * p))
+            init_scale * torch.randn(hidden_dim, group_size) / torch.sqrt(torch.tensor(group_size))
         )
-        self.W_out = nn.Parameter(init_scale * torch.randn(p, d) / torch.sqrt(torch.tensor(d)))
+        self.W_mix = nn.Parameter(
+            init_scale * torch.randn(hidden_dim, hidden_dim) / torch.sqrt(torch.tensor(hidden_dim))
+        )
+        self.W_drive = nn.Parameter(
+            init_scale * torch.randn(hidden_dim, group_size) / torch.sqrt(torch.tensor(group_size))
+        )
+        self.W_out = nn.Parameter(
+            init_scale * torch.randn(group_size, hidden_dim) / torch.sqrt(torch.tensor(hidden_dim))
+        )
 
     def forward(self, x_seq: torch.Tensor) -> torch.Tensor:
+        """Forward pass.
+
+        Parameters
+        ----------
+        x_seq : torch.Tensor, shape (batch, k, group_size)
+
+        Returns
+        -------
+        If ``return_all_outputs=False``: shape ``(batch, group_size)``.
+        If ``return_all_outputs=True``:  shape ``(batch, k-1, group_size)``.
         """
-        Process k unordered input vectors.
+        k = x_seq.shape[1]
+        assert k >= 2, "Sequence length must be at least 2"
 
-        Args:
-            x_seq: (batch, k, p) - k input vectors of dimension p each
+        h_0 = x_seq[:, 0, :] @ self.W_in.T
+        h_1 = x_seq[:, 1, :] @ self.W_drive.T
+        h = (h_0 + h_1) ** 2
 
-        Returns:
-            (batch, p) - output vector
-            Note: return_all_outputs is ignored for MLP (no intermediate outputs)
-        """
-        batch_size = x_seq.shape[0]
-        k_actual = x_seq.shape[1]
+        if self.return_all_outputs:
+            outputs = [h @ self.W_out.T]
+            for t in range(2, k):
+                xt = x_seq[:, t, :]
+                h = (h @ self.W_mix.T + xt @ self.W_drive.T) ** 2
+                outputs.append(h @ self.W_out.T)
+            return torch.stack(outputs, dim=1)
 
-        assert k_actual == self.k, f"Expected k={self.k} inputs, got {k_actual}"
+        for t in range(2, k):
+            xt = x_seq[:, t, :]
+            h = (h @ self.W_mix.T + xt @ self.W_drive.T) ** 2
 
-        # Concatenate all k inputs
-        x_concat = x_seq.reshape(batch_size, self.k * self.p)  # (batch, k*p)
-
-        # First layer: linear transformation
-        h = x_concat @ self.W_in.T  # (batch, d)
-
-        # Activation: k-th power
-        h_activated = h**self.k  # (batch, d)
-
-        # Second layer: output
-        y = h_activated @ self.W_out.T  # (batch, p)
-
-        return y
+        return h @ self.W_out.T
