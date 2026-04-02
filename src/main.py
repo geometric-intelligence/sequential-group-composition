@@ -283,13 +283,13 @@ def produce_plots_cnxcn(
     ### ----- COMPUTE X-AXIS VALUES ----- ###
     group_name = config["data"]["group_name"]
     if group_name == "cn":
-        p_flat = config["data"]["p"]
+        group_size = config["data"]["p"]
     else:
-        p_flat = config["data"]["p1"] * config["data"]["p2"]
+        group_size = config["data"]["p1"] * config["data"]["p2"]
 
     k = config["data"]["k"]
     batch_size = config["data"]["batch_size"]
-    total_space_size = p_flat**k
+    total_space_size = group_size**k
 
     # Calculate different x-axis values for plotting
     if training_mode == "online":
@@ -504,7 +504,7 @@ def produce_plots_cnxcn(
             config["data"]["p1"],
             config["data"]["p2"],
             steps=checkpoint_indices,
-            within_group_order="phase",
+            within_group_size="phase",
             dead_l2_thresh=0.1,
             save_path=os.path.join(run_dir, "wmix_frequency_structure.pdf"),
             show=False,
@@ -515,11 +515,11 @@ def produce_plots_cnxcn(
     ### ----- PLOT W-ROW DOMINANT IRREP FRACTION (TwoLayerMLP / W_out) ----- ###
     if plot_w_dominant_irrep_fraction_bool and not weight_power_in_combined:
         print("Plotting W-row dominant irrep fraction over time...")
-        p_flat_2d = config["data"]["p1"] * config["data"]["p2"]
+        group_size_2d = config["data"]["p1"] * config["data"]["p2"]
         fig_w = viz.plot_w_dominant_irrep_fraction(
             param_hist=param_hist,
             param_save_indices=param_save_indices,
-            group_size=p_flat_2d,
+            group_size=group_size_2d,
             x_label=x_label_steps,
             group_name="cnxcn",
             p1=config["data"]["p1"],
@@ -816,7 +816,7 @@ def produce_plots_group(
         param_hist: List of parameter snapshots
         param_save_indices: Indices where params were saved
         train_loss_hist: Training loss history
-        template: 1D template array of shape (group_order,)
+        template: 1D template array of shape (group_size,)
         device: Device string ('cpu' or 'cuda')
         group: escnn group object (required)
     """
@@ -841,14 +841,14 @@ def produce_plots_group(
     plot_power_spectrum = plots_bool_dict.get("power_spectrum", True)
     plot_w_dominant_irrep_fraction_bool = plots_bool_dict.get("w_dominant_irrep_fraction", True)
 
-    group_order = group.order()
+    group_size = group.order()
 
     k = config["data"]["k"]
     batch_size = config["data"]["batch_size"]
     training_mode = config["training"]["mode"]
 
     # Total data space size with k compositions
-    total_space_size = group_order**k
+    total_space_size = group_size**k
 
     # Calculate x-axis values
     if training_mode == "online":
@@ -872,7 +872,7 @@ def produce_plots_group(
     print(f"  ✓ Saved {samples_seen_path}")
     print(f"  ✓ Saved {fraction_path}")
 
-    print(f"\n{group_name} group order: {group_order}")
+    print(f"\n{group_name} group order: {group_size}")
     print(f"Sequence length k: {k}")
     print(f"Total data space: {total_space_size:,} sequences")
     if len(samples_seen) > 0:
@@ -945,7 +945,7 @@ def produce_plots_group(
             param_hist=param_hist,
             X_eval=X_eval_t,
             Y_eval=Y_eval_t,
-            group_size=group_order,
+            group_size=group_size,
             checkpoint_indices=checkpoint_indices,
             save_path=os.path.join(run_dir, "predictions_over_time.pdf"),
             group_label=group_label,
@@ -984,7 +984,7 @@ def produce_plots_group(
             {
                 "param_hist": param_hist,
                 "param_save_indices": param_save_indices,
-                "group_size": group_order,
+                "group_size": group_size,
                 "group_name": group_name,
                 "group": group,
             }
@@ -1011,7 +1011,7 @@ def produce_plots_group(
         fig_w = viz.plot_w_dominant_irrep_fraction(
             param_hist=param_hist,
             param_save_indices=param_save_indices,
-            group_size=group_order,
+            group_size=group_size,
             x_label=x_label,
             group_name=group_name,
             group=group,
@@ -1021,7 +1021,7 @@ def produce_plots_group(
         if fig_w is None:
             print(
                 "  (skipped w_dominant_irrep_fraction: need W or W_out with second dim"
-                f" {group_order} matching escnn group order)"
+                f" {group_size} matching escnn group order)"
             )
 
     viz.maybe_save_w_dominant_irrep_fraction_npz(
@@ -1068,7 +1068,7 @@ def train_single_run(config: dict, run_dir: Path = None) -> dict:
     if group_name == "cn":
         # 1D template generation
         p = config["data"]["p"]
-        p_flat = p
+        group_size = p
 
         if template_type == "mnist":
             template_1d = template.mnist_1d(p, config["data"]["mnist_label"], root="data")
@@ -1104,7 +1104,7 @@ def train_single_run(config: dict, run_dir: Path = None) -> dict:
         # 2D template generation
         p1 = config["data"]["p1"]
         p2 = config["data"]["p2"]
-        p_flat = p1 * p2
+        group_size = p1 * p2
 
         if template_type == "mnist":
             template_2d = template.mnist_2d(p1, p2, config["data"]["mnist_label"], root="data")
@@ -1147,15 +1147,14 @@ def train_single_run(config: dict, run_dir: Path = None) -> dict:
             group = Icosahedral()
             group_label = "Icosahedral (A5)"
 
-        group_order = group.order()
-        p_flat = group_order
+        group_size = group.order()
 
-        print(f"{group_label} group order: {group_order}")
+        print(f"{group_label} group order: {group_size}")
         print(f"{group_label} irreps: {[irrep.size for irrep in group.irreps()]} (dimensions)")
 
         # Generate template
         if template_type == "onehot":
-            tpl = np.zeros(group_order, dtype=np.float32)
+            tpl = np.zeros(group_size, dtype=np.float32)
             tpl[1] = 10.0
             tpl = tpl - np.mean(tpl)
             print("Template type: onehot")
@@ -1176,16 +1175,16 @@ def train_single_run(config: dict, run_dir: Path = None) -> dict:
         # Visualize template
         if config.get("analysis", {}).get("plots", {}).get("template", True):
             print("Visualizing template...")
-            fig, ax = plt.subplots(figsize=(max(8, group_order // 5), 4))
-            ax.bar(range(group_order), tpl)
+            fig, ax = plt.subplots(figsize=(max(8, group_size // 5), 4))
+            ax.bar(range(group_size), tpl)
             ax.set_xlabel("Group element index")
             ax.set_ylabel("Value")
-            title = f"{group_label} Template (order={group_order}, type={template_type})"
+            title = f"{group_label} Template (order={group_size}, type={template_type})"
             if template_type == "custom_fourier":
                 title += f"\npowers={powers}"
             ax.set_title(title)
-            if group_order <= 30:
-                ax.set_xticks(range(group_order))
+            if group_size <= 30:
+                ax.set_xticks(range(group_size))
             fig.savefig(os.path.join(run_dir, "template.pdf"), bbox_inches="tight", dpi=150)
             plt.close(fig)
             print("  ✓ Saved template")
@@ -1197,7 +1196,6 @@ def train_single_run(config: dict, run_dir: Path = None) -> dict:
     ### ----- SETUP TRAINING ----- ###
     print("Setting up model and training...")
 
-    group_size = p_flat
     model_type = config["model"]["model_type"]
     print(f"Using model type: {model_type}")
 
