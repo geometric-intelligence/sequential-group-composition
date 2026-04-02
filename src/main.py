@@ -1225,22 +1225,18 @@ def train_single_run(config: dict, run_dir: Path = None) -> dict:
 
     optimizer_name = config["training"]["optimizer"]
 
-    if optimizer_name == "auto" or (optimizer_name not in ["adam", "hybrid", "per_neuron"]):
-        if model_type == "TwoLayerMLP":
-            optimizer_name = "per_neuron"
-            print(f"Auto-selected optimizer: {optimizer_name} (recommended for TwoLayerMLP)")
-        else:
-            optimizer_name = "adam"
-            print(f"Auto-selected optimizer: {optimizer_name}")
-    else:
-        print(f"Using optimizer: {optimizer_name}")
-
     if optimizer_name == "adam":
         opt = optim.Adam(
             net.parameters(),
             lr=config["training"]["learning_rate"],
             betas=tuple(config["training"]["betas"]),
             weight_decay=config["training"]["weight_decay"],
+        )
+    elif optimizer_name == "per_neuron":
+        opt = optimizer.PerNeuronScaledSGD(
+            net,
+            lr=config["training"]["learning_rate"],
+            degree=config["training"]["degree"],
         )
     elif optimizer_name == "hybrid":
         if model_type != "QuadraticRNN":
@@ -1255,13 +1251,6 @@ def train_single_run(config: dict, run_dir: Path = None) -> dict:
             adam_betas=tuple(config["training"]["betas"]),
             adam_eps=1e-8,
         )
-    elif optimizer_name == "per_neuron":
-        opt = optimizer.PerNeuronScaledSGD(
-            net,
-            lr=config["training"]["learning_rate"],
-            degree=config["training"]["degree"],
-        )
-        print(f"  Degree of homogeneity: {opt.param_groups[0]['degree']}")
     else:
         raise ValueError(
             f"Invalid optimizer: {optimizer_name}. Must be 'adam', 'hybrid', or 'per_neuron'"
