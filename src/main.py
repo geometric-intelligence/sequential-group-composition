@@ -1706,7 +1706,10 @@ GROUP_CONFIG_MAP = {
 def _group_key_for_combined_plot(config: dict) -> str | None:
     """Return GROUP_CONFIG_MAP key if *config* matches that group's reference YAML, else None."""
     for key, path in GROUP_CONFIG_MAP.items():
-        ref = load_config(path)
+        try:
+            ref = load_config(path)
+        except FileNotFoundError:
+            continue
         if _group_matches(config, ref):
             return key
     return None
