@@ -32,7 +32,7 @@ training:
   learning_rate: 0.02         # Base learning rate
   betas: [0.9, 0.999]        # Adam/hybrid beta parameters
   weight_decay: 0.0           # L2 regularization strength
-  degree: null                # Homogeneity degree for 'per_neuron' (null = auto-infer)
+  degree: null                # Homogeneity degree for 'per_neuron' (null = defaults to model.k)
   scaling_factor: -3          # Per-neuron norm exponent for 'hybrid' optimizer only
   grad_clip: 0.1              # Maximum gradient norm (0 = disabled)
   verbose_interval: 200       # Print loss every N epochs/steps

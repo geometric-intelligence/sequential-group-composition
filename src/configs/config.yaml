@@ -82,10 +82,7 @@ training:
   num_steps: 100                # Used when mode='online'
 
   # Optimizer
-  optimizer: adam       # 'auto' | 'adam' | 'hybrid' | 'per_neuron'
-                              # 'auto' selects optimizer based on model:
-                              #   - TwoLayerMLP → 'per_neuron' (recommended)
-                              #   - QuadraticRNN → 'adam'
+  optimizer: adam       # 'adam' | 'per_neuron' | 'hybrid'
                               # 'hybrid' is QuadraticRNN-specific only
 
   learning_rate: 0.00008        # Base learning rate
@@ -102,9 +99,7 @@ training:
   # Homogeneity-based scaling parameters
   scaling_factor: -3          # For 'hybrid' optimizer only (QuadraticRNN)
   degree: null                # For 'per_neuron' optimizer: degree of homogeneity
-                              # If null (default), auto-inferred from model:
-                              #   - TwoLayerMLP: uses model.k
-                              #   - Other models: defaults to model.k
+                              # If null (default), defaults to model.k
 
   # Training Dynamics
   grad_clip: 0.1
