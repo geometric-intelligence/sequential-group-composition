@@ -10,11 +10,11 @@ data:
   num_samples: 5
 
 model:
-  model_type: SequentialMLP
+  model_type: TwoLayerMLP
+  nonlinearity: power
   hidden_dim: 10
   init_scale: 0.01
   return_all_outputs: false
-  transform_type: quadratic
 
 training:
   mode: offline

@@ -3,9 +3,9 @@ import numpy as np
 import src.fourier as fourier
 
 
-def one_hot(p):
-    """One-hot, with 0th frequency removed (!) encoding of an integer value in R^p."""
-    vec = np.zeros(p)
+def one_hot(group_size):
+    """One-hot, with 0th frequency removed (!) encoding of an integer value in R^group_size."""
+    vec = np.zeros(group_size)
     vec[1] = 10
 
     zeroth_freq = np.mean(vec)
@@ -13,34 +13,34 @@ def one_hot(p):
     return vec
 
 
-def fixed_cn(p, powers):
+def fixed_cn(group_size, powers):
     """Generate a template for cyclic group C_n from desired per-mode powers.
 
     Parameters
     ----------
-    p : int
-        p in C_p (group order).
+    group_size : int
+        Order of the cyclic group C_{group_size}.
     powers : list of float
         Desired spectral power for each frequency mode.
-        Length must equal the number of modes: ``(p + 1) // 2``
+        Length must equal the number of modes: ``(group_size + 1) // 2``
         for odd ``group_size``, or ``group_size // 2 + 1`` for even.
 
     Returns
     -------
-    template : np.ndarray, shape (p,), dtype float32
+    template : np.ndarray, shape (group_size,), dtype float32
         Mean-centered template.
     """
-    n_modes = (p + 1) // 2 if p % 2 == 1 else p // 2 + 1
+    n_modes = (group_size + 1) // 2 if group_size % 2 == 1 else group_size // 2 + 1
     assert len(powers) == n_modes, (
-        f"powers length {len(powers)} must equal number of frequency modes {n_modes} for p={p}"
+        f"powers length {len(powers)} must equal number of frequency modes {n_modes} for group_size={group_size}"
     )
 
     fourier_coef_mags = [0.0]
     for k_mode in range(1, len(powers)):
-        mag = np.sqrt(powers[k_mode] * p / 2.0) if powers[k_mode] > 0 else 0.0
+        mag = np.sqrt(powers[k_mode] * group_size / 2.0) if powers[k_mode] > 0 else 0.0
         fourier_coef_mags.append(mag)
 
-    spectrum = np.zeros(p, dtype=complex)
+    spectrum = np.zeros(group_size, dtype=complex)
     spectrum[0] = fourier_coef_mags[0]
 
     for i_mag in range(1, len(fourier_coef_mags)):
@@ -74,11 +74,11 @@ def fixed_cnxcn(p1, p2, powers):
     template : np.ndarray, shape (p1 * p2,), dtype float32
         Mean-centered, flattened template.
     """
-    p_flat = p1 * p2
+    group_size = p1 * p2
 
     fourier_coef_mags = []
     for pw in powers:
-        mag = np.sqrt(pw * p_flat / 2.0) if pw > 0 else 0.0
+        mag = np.sqrt(pw * group_size / 2.0) if pw > 0 else 0.0
         fourier_coef_mags.append(mag)
 
     spectrum = np.zeros((p1, p2), dtype=complex)
@@ -169,17 +169,17 @@ def template_selector(config):
     return template
 
 
-def mnist_1d(p: int, label: int, root: str = "data", axis: int = 0):
-    """Return a (p,) 1D template from a random MNIST image by taking a slice or projection.
+def mnist_1d(group_size: int, label: int, root: str = "data", axis: int = 0):
+    """Return a (group_size,) 1D template from a random MNIST image by taking a slice or projection.
 
     Args:
-        p: dimension of the cyclic group
+        group_size: dimension of the cyclic group
         label: MNIST digit class (0-9)
         root: MNIST data directory
         axis: 0 for row average, 1 for column average, 2 for diagonal
 
     Returns:
-        template: (p,) array
+        template: (group_size,) array
     """
     import torch
     import torchvision
@@ -211,7 +211,7 @@ def mnist_1d(p: int, label: int, root: str = "data", axis: int = 0):
     from scipy.interpolate import interp1d
 
     x_old = np.linspace(0, 1, len(signal))
-    x_new = np.linspace(0, 1, p)
+    x_new = np.linspace(0, 1, group_size)
     f = interp1d(x_old, signal, kind="cubic")
     template = f(x_new)
 
@@ -252,28 +252,28 @@ def mnist_2d(p1: int, p2: int, label: int, root: str = "data"):
     return img.numpy().astype(np.float32)
 
 
-def gaussian_1d(p: int, n_gaussians: int = 3, sigma_range: tuple = (0.5, 2.0), seed=None):
+def gaussian_1d(group_size: int, n_gaussians: int = 3, sigma_range: tuple = (0.5, 2.0), seed=None):
     """Generate 1D template as sum of Gaussians.
 
     Args:
-        p: dimension of cyclic group
+        group_size: dimension of cyclic group
         n_gaussians: number of Gaussian bumps
         sigma_range: (min_sigma, max_sigma) for Gaussian widths
         seed: random seed
 
     Returns:
-        template: (p,) real-valued array
+        template: (group_size,) real-valued array
     """
     rng = np.random.default_rng(seed)
-    x = np.arange(p)
-    template = np.zeros(p, dtype=np.float32)
+    x = np.arange(group_size)
+    template = np.zeros(group_size, dtype=np.float32)
 
     for _ in range(n_gaussians):
-        center = rng.uniform(0, p)
+        center = rng.uniform(0, group_size)
         sigma = rng.uniform(*sigma_range)
         amplitude = rng.uniform(0.5, 1.0)
 
-        dist = np.minimum(np.abs(x - center), p - np.abs(x - center))
+        dist = np.minimum(np.abs(x - center), group_size - np.abs(x - center))
         template += amplitude * np.exp(-(dist**2) / (2 * sigma**2))
 
     template -= template.mean()
@@ -284,16 +284,16 @@ def gaussian_1d(p: int, n_gaussians: int = 3, sigma_range: tuple = (0.5, 2.0), s
     return template.astype(np.float32)
 
 
-def onehot_1d(p: int):
-    """Generate 1D one-hot template for cyclic group C_p.
+def onehot_1d(group_size: int):
+    """Generate 1D one-hot template for cyclic group.
 
     Args:
-        p: dimension of cyclic group
+        group_size: dimension of cyclic group
 
     Returns:
-        template: (p,) array with template[0] = 1, all others = 0
+        template: (group_size,) array with template[0] = 1, all others = 0
     """
-    template = np.zeros(p, dtype=np.float32)
+    template = np.zeros(group_size, dtype=np.float32)
     template[0] = 1.0
     return template
 

@@ -40,12 +40,11 @@
 ### Prerequisites
 
 - [Conda](https://docs.conda.io/en/latest/) (Miniconda or Anaconda)
-- `gfortran` (Linux only, required by some numerical dependencies)
 
-### Setup
+### Setup (Linux)
 
 ```bash
-# Linux only: install gfortran
+# Install gfortran (required by numerical dependencies)
 sudo apt install -y gfortran
 
 # Create and activate the conda environment
@@ -55,6 +54,53 @@ conda activate group-agf
 # Install all Python dependencies (pinned versions from poetry.lock)
 poetry install
 ```
+
+### Setup (macOS)
+
+On macOS several dependencies require extra steps because (a) `gfortran` and `libomp` (OpenMP) are not bundled with Apple's toolchain, and (b) PyTorch ≤ 2.2 requires NumPy < 2.
+
+```bash
+# 1. Install build prerequisites via Homebrew
+brew install gcc        # provides gfortran
+brew install libomp     # OpenMP runtime (needed by py3nj / escnn)
+
+# 2. Create and activate the conda environment
+conda env create -f conda.yaml
+conda activate group-agf
+
+# 3. Install lie-learn from source (the PyPI release fails on Python 3.12+)
+pip install cython
+pip install --no-build-isolation git+https://github.com/AMLab-Amsterdam/lie_learn.git
+
+# 4. Build py3nj with OpenMP made optional
+#    (Apple clang + Rosetta can't always locate libomp for Meson builds)
+pip download py3nj --no-binary :all: -d /tmp/py3nj_src --no-deps --no-build-isolation
+cd /tmp && tar xzf /tmp/py3nj_src/py3nj-*.tar.gz
+sed -i '' "s/dependency('openmp')/dependency('openmp', required: false)/" /tmp/py3nj-*/meson.build
+pip install --no-build-isolation /tmp/py3nj-*/
+cd -
+
+# 5. Install all Python dependencies (without poetry.lock, which is Linux-specific)
+pip install torch torchvision 'numpy<2' scipy matplotlib jupyter jupyterlab \
+    pandas scikit-image wandb jupyterlab-code-formatter pytest ipykernel \
+    pykernel scikit-learn tqdm seaborn jupyter-black ruff pre-commit escnn
+```
+
+> **Note (macOS):**
+> - PyTorch on x86_64 macOS is capped at 2.2.x and requires `numpy<2`.
+> - `py3nj` is built without OpenMP parallelization; this affects only the speed of Wigner symbol computation, not correctness.
+> - The `lie-learn` data files (`J_dense_0-150.npy`, `J_block_0-150.npy`) are downloaded automatically on first use by `escnn`. If they are missing, run:
+>   ```bash
+>   python -c "
+>   import os, requests
+>   target = os.path.join(os.path.dirname(__import__('lie_learn').representations.SO3.pinchon_hoggan.__file__))
+>   base = 'https://github.com/AMLab-Amsterdam/lie_learn/raw/master/lie_learn/representations/SO3/pinchon_hoggan'
+>   for f in ['J_dense_0-150.npy', 'J_block_0-150.npy']:
+>       p = os.path.join(target, f)
+>       if not os.path.exists(p):
+>           open(p, 'wb').write(requests.get(f'{base}/{f}').content)
+>   "
+>   ```
 
 ## Usage
 
