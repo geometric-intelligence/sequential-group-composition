@@ -29,9 +29,7 @@ def group_composition_dataset(group_name, *, online=False, **kwargs):
     """
     if online:
         if group_name not in ("cn", "cnxcn"):
-            raise ValueError(
-                f"Online mode only supported for 'cn' and 'cnxcn', got '{group_name}'"
-            )
+            raise ValueError(f"Online mode only supported for 'cn' and 'cnxcn', got '{group_name}'")
         if group_name == "cn":
             return _OnlineModularAdditionDataset1D(**kwargs)
         return _OnlineModularAdditionDataset2D(**kwargs)
@@ -96,9 +94,7 @@ def _build_cn(
     if mode == "exhaustive":
         total = group_size**k
         if total > 1_000_000:
-            raise ValueError(
-                f"group_size^k = {total} is huge; use mode='sampled' instead."
-            )
+            raise ValueError(f"group_size^k = {total} is huge; use mode='sampled' instead.")
         N = total
         sequence = np.zeros((N, k), dtype=np.int64)
         for idx in range(N):
@@ -137,17 +133,13 @@ def _build_cnxcn(
     return_all_outputs=False,
 ):
     r"""Build dataset arrays for product group C_{p1} \times C_{p2} via 2D np.roll."""
-    assert template.shape == (p1, p2), (
-        f"template must be ({p1}, {p2}), got {template.shape}"
-    )
+    assert template.shape == (p1, p2), f"template must be ({p1}, {p2}), got {template.shape}"
     group_size = p1 * p2
 
     if mode == "exhaustive":
         total = group_size**k
         if total > 1_000_000:
-            raise ValueError(
-                f"(p1*p2)^k = {total} is huge; use mode='sampled' instead."
-            )
+            raise ValueError(f"(p1*p2)^k = {total} is huge; use mode='sampled' instead.")
         N = total
         sequence_xy = np.zeros((N, k, 2), dtype=np.int64)
         for idx in range(N):
@@ -173,9 +165,7 @@ def _build_cnxcn(
             X[i, t, :] = rolled.ravel()
             sx = (sx + ax) % p1
             sy = (sy + ay) % p2
-            Y[i, t, :] = np.roll(
-                np.roll(template, shift=sx, axis=0), shift=sy, axis=1
-            ).ravel()
+            Y[i, t, :] = np.roll(np.roll(template, shift=sx, axis=0), shift=sy, axis=1).ravel()
 
     if not return_all_outputs:
         Y = Y[:, -1, :]
@@ -207,9 +197,7 @@ def _build_group(
     if mode == "exhaustive":
         total = n_elements**k
         if total > 1_000_000:
-            raise ValueError(
-                f"n_elements^k = {total} is huge; use mode='sampled' instead."
-            )
+            raise ValueError(f"n_elements^k = {total} is huge; use mode='sampled' instead.")
         N = total
         sequence = np.zeros((N, k), dtype=np.int64)
         for idx in range(N):
@@ -365,8 +353,7 @@ class _OnlineModularAdditionDataset1D(IterableDataset):
         """
         if shifts.dim() == 1:
             indices = (
-                torch.arange(self.group_size, device=self.device).unsqueeze(0)
-                - shifts.unsqueeze(1)
+                torch.arange(self.group_size, device=self.device).unsqueeze(0) - shifts.unsqueeze(1)
             ) % self.group_size
         else:
             indices = (

@@ -268,9 +268,7 @@ def powers_per_neuron_rows(W: np.ndarray, group) -> np.ndarray:
     if W.ndim != 2:
         raise ValueError(f"W must be 2-D, got shape {W.shape}")
     if W.shape[1] != group.order():
-        raise ValueError(
-            f"W.shape[1] ({W.shape[1]}) must equal group.order() ({group.order()})"
-        )
+        raise ValueError(f"W.shape[1] ({W.shape[1]}) must equal group.order() ({group.order()})")
     hidden = W.shape[0]
     n_irreps = len(group.irreps())
     out = np.empty((hidden, n_irreps))
@@ -317,9 +315,7 @@ def powers_per_neuron_rows_cyclic(
     if p1 is None or p2 is None:
         raise ValueError("p1 and p2 are required for cyclic 2D (CyclicPower template_dim=2)")
     if W.shape[1] != p1 * p2:
-        raise ValueError(
-            f"W.shape[1] ({W.shape[1]}) must equal p1*p2 ({p1 * p2})"
-        )
+        raise ValueError(f"W.shape[1] ({W.shape[1]}) must equal p1*p2 ({p1 * p2})")
     cp0 = CyclicPower(W[0], template_dim=2, p1=p1, p2=p2)
     n_bins = cp0.power.size
     out = np.empty((hidden, n_bins))

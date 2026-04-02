@@ -124,7 +124,9 @@ class TestTwoLayerMLP:
         hidden_dim = 8
 
         for k in [2, 3, 4, 5]:
-            net = model.TwoLayerMLP(group_size=group_size, hidden_dim=hidden_dim, k=k, nonlinearity="power")
+            net = model.TwoLayerMLP(
+                group_size=group_size, hidden_dim=hidden_dim, k=k, nonlinearity="power"
+            )
             x = torch.randn(4, k, group_size)
             y = net(x)
             assert y.shape == (4, group_size), f"Failed for k={k}"

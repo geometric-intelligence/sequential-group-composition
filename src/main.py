@@ -278,9 +278,7 @@ def produce_plots_cnxcn(
     plot_predictions_bool = plots_bool_dict.get("predictions", True)
     plot_power_spectrum = plots_bool_dict.get("power_spectrum", True)
     plot_wmix_bool = plots_bool_dict.get("wmix", True)
-    plot_w_dominant_irrep_fraction_bool = plots_bool_dict.get(
-        "w_dominant_irrep_fraction", True
-    )
+    plot_w_dominant_irrep_fraction_bool = plots_bool_dict.get("w_dominant_irrep_fraction", True)
 
     ### ----- COMPUTE X-AXIS VALUES ----- ###
     group_name = config["data"]["group_name"]
@@ -576,9 +574,7 @@ def produce_plots_cn(
     plot_training_loss_bool = plots_bool_dict.get("training_loss", True)
     plot_predictions_bool = plots_bool_dict.get("predictions", True)
     plot_power_spectrum = plots_bool_dict.get("power_spectrum", True)
-    plot_w_dominant_irrep_fraction_bool = plots_bool_dict.get(
-        "w_dominant_irrep_fraction", True
-    )
+    plot_w_dominant_irrep_fraction_bool = plots_bool_dict.get("w_dominant_irrep_fraction", True)
 
     ### ----- COMPUTE X-AXIS VALUES ----- ###
     p = config["data"]["p"]
@@ -787,10 +783,7 @@ def produce_plots_cn(
             show=False,
         )
         if fig_w is None:
-            print(
-                "  (skipped w_dominant_irrep_fraction: need W or W_out with second dim"
-                f" {p})"
-            )
+            print(f"  (skipped w_dominant_irrep_fraction: need W or W_out with second dim {p})")
 
     viz.maybe_save_w_dominant_irrep_fraction_npz(
         run_dir,
@@ -846,9 +839,7 @@ def produce_plots_group(
     plot_training_loss_bool = plots_bool_dict.get("training_loss", True)
     plot_predictions_bool = plots_bool_dict.get("predictions", True)
     plot_power_spectrum = plots_bool_dict.get("power_spectrum", True)
-    plot_w_dominant_irrep_fraction_bool = plots_bool_dict.get(
-        "w_dominant_irrep_fraction", True
-    )
+    plot_w_dominant_irrep_fraction_bool = plots_bool_dict.get("w_dominant_irrep_fraction", True)
 
     group_order = group.order()
 

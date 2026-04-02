@@ -568,13 +568,9 @@ def compute_w_dominant_irrep_fraction_data(
         if group_name == "cn":
             probe = power.powers_per_neuron_rows_cyclic(W0[:1], template_dim=1)
         else:
-            probe = power.powers_per_neuron_rows_cyclic(
-                W0[:1], template_dim=2, p1=p1, p2=p2
-            )
+            probe = power.powers_per_neuron_rows_cyclic(W0[:1], template_dim=2, p1=p1, p2=p2)
         n_modes = probe.shape[1]
-        ylabel = (
-            r"Fraction in final dominant mode ($E_{\mathrm{dom}}/\max_t E_{\mathrm{tot}}$)"
-        )
+        ylabel = r"Fraction in final dominant mode ($E_{\mathrm{dom}}/\max_t E_{\mathrm{tot}}$)"
     else:
         n_modes = len(group.irreps())
         ylabel = r"Fraction in final dominant irrep ($E_{\mathrm{dom}}/\max_t E_{\mathrm{tot}}$)"
@@ -594,13 +590,9 @@ def compute_w_dominant_irrep_fraction_data(
             return None
         if use_cyclic:
             if group_name == "cn":
-                row_powers = power.powers_per_neuron_rows_cyclic(
-                    W, template_dim=1
-                )
+                row_powers = power.powers_per_neuron_rows_cyclic(W, template_dim=1)
             else:
-                row_powers = power.powers_per_neuron_rows_cyclic(
-                    W, template_dim=2, p1=p1, p2=p2
-                )
+                row_powers = power.powers_per_neuron_rows_cyclic(W, template_dim=2, p1=p1, p2=p2)
         else:
             row_powers = power.powers_per_neuron_rows(W, group)
         W_power_over_time.append(row_powers)
@@ -638,7 +630,9 @@ def save_w_dominant_irrep_fraction_npz(path: str | Path, data: dict) -> None:
     np.savez_compressed(
         path,
         x_plot=np.asarray(data["x_plot"], dtype=np.float64),
-        dominant_fraction_over_time=np.asarray(data["dominant_fraction_over_time"], dtype=np.float64),
+        dominant_fraction_over_time=np.asarray(
+            data["dominant_fraction_over_time"], dtype=np.float64
+        ),
         dominant_idx=np.asarray(data["dominant_idx"], dtype=np.int64),
         n_modes=np.int32(data["n_modes"]),
         ylabel=np.array(data["ylabel"], dtype=object),

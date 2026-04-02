@@ -46,7 +46,7 @@ class PerNeuronScaledSGD(torch.optim.Optimizer):
         if g_in is None or g_out is None:
             return
 
-        u2 = (W_in**2).sum(dim=1)   # (hidden_dim,)
+        u2 = (W_in**2).sum(dim=1)  # (hidden_dim,)
         w2 = (W_out**2).sum(dim=0)  # (hidden_dim,)
         theta_norm = torch.sqrt(u2 + w2 + 1e-12)
 
@@ -138,9 +138,9 @@ class HybridRNNOptimizer(torch.optim.Optimizer):
                 if g_in is None or g_drive is None or g_out is None:
                     continue
 
-                u2 = (W_in**2).sum(dim=1)     # (hidden_dim,)
+                u2 = (W_in**2).sum(dim=1)  # (hidden_dim,)
                 v2 = (W_drive**2).sum(dim=1)  # (hidden_dim,)
-                w2 = (W_out**2).sum(dim=0)    # (hidden_dim,)
+                w2 = (W_out**2).sum(dim=0)  # (hidden_dim,)
                 theta_norm = torch.sqrt(u2 + v2 + w2 + 1e-12)
 
                 scale = theta_norm.pow(scaling_factor)

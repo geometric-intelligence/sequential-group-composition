@@ -41,14 +41,10 @@ class TwoLayerMLP(nn.Module):
         self.output_scale = output_scale
 
         self.W_in = nn.Parameter(
-            init_scale
-            * torch.randn(self.hidden_dim, k * group_size)
-            / np.sqrt(k * group_size)
+            init_scale * torch.randn(self.hidden_dim, k * group_size) / np.sqrt(k * group_size)
         )
         self.W_out = nn.Parameter(
-            init_scale
-            * torch.randn(group_size, self.hidden_dim)
-            / np.sqrt(self.hidden_dim)
+            init_scale * torch.randn(group_size, self.hidden_dim) / np.sqrt(self.hidden_dim)
         )
 
     def forward(self, x_seq):
