@@ -14,7 +14,6 @@ from pathlib import Path
 import numpy as np
 from escnn.group import Icosahedral, Octahedral
 
-
 DATA_DIR = Path(__file__).resolve().parent.parent / "src" / "groups" / "data"
 
 

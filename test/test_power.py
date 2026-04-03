@@ -2,9 +2,9 @@
 
 import numpy as np
 
-from src.groups import DihedralGroup, OctahedralGroup
 import src.power as power
 import src.template as template
+from src.groups import DihedralGroup, OctahedralGroup
 
 
 class TestGetPower1D:

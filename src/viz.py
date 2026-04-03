@@ -1100,9 +1100,7 @@ def plot_power_1d(
     cp_theory = power.CyclicPower(np.asarray(template_1d).ravel(), template_dim=1)
     y_levels = np.array(cp_theory.loss_plateau_predictions(verbose=False), dtype=float)
 
-    n_bands = (
-        max(0, min(len(tracked_freqs), len(y_levels) - 1)) if len(y_levels) else 0
-    )
+    n_bands = max(0, min(len(tracked_freqs), len(y_levels) - 1)) if len(y_levels) else 0
     for i in range(n_bands):
         y_top = y_levels[i]
         y_bot = y_levels[i + 1]

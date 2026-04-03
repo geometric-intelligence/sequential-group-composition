@@ -1,7 +1,6 @@
 import numpy as np
 import torch
 
-
 # ---------------------------------------------------------------------------
 # Loss plateau prediction functions (extracted from former CyclicPower /
 # GroupPower classes)

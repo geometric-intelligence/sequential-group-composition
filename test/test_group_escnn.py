@@ -18,7 +18,6 @@ from src.groups.a5 import IcosahedralGroup  # noqa: E402
 from src.groups.dn import DihedralGroup  # noqa: E402
 from src.groups.oh import OctahedralGroup  # noqa: E402
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

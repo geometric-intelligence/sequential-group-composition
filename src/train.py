@@ -6,7 +6,9 @@ from torch import nn
 from torch.utils.data import DataLoader
 
 
-def _clone_param_snapshots(snapshots: list[dict[str, torch.Tensor]]) -> list[dict[str, torch.Tensor]]:
+def _clone_param_snapshots(
+    snapshots: list[dict[str, torch.Tensor]],
+) -> list[dict[str, torch.Tensor]]:
     return [{k: v.detach().cpu().clone() for k, v in sd.items()} for sd in snapshots]
 
 
@@ -136,10 +138,7 @@ def train(
             epoch <= dense_save_until
             or (
                 save_param_interval is not None
-                and (
-                    global_epoch % save_param_interval == 0
-                    or epoch == epochs
-                )
+                and (global_epoch % save_param_interval == 0 or epoch == epochs)
             )
             or (save_param_interval is None and epoch == epochs)
         )
@@ -307,10 +306,7 @@ def train_online(
             should_save = save_param_snapshots and (
                 (
                     save_param_interval is not None
-                    and (
-                        global_step % save_param_interval == 0
-                        or step == num_steps
-                    )
+                    and (global_step % save_param_interval == 0 or step == num_steps)
                 )
                 or (save_param_interval is None and step == num_steps)
             )

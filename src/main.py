@@ -1334,7 +1334,7 @@ def train_single_run(config: dict, run_dir: Path = None) -> dict:
     else:
         raise ValueError(f"Unknown model_type: {model_type}")
 
-    resume_state = _apply_training_resume(rnn_2d, config, device)
+    resume_state = _apply_training_resume(net, config, device)
 
     criterion = nn.MSELoss()
 
@@ -1507,9 +1507,7 @@ def train_single_run(config: dict, run_dir: Path = None) -> dict:
 
     if not save_param_snapshots:
         with torch.no_grad():
-            param_hist = [
-                {n: p.detach().cpu().clone() for n, p in rnn_2d.named_parameters()}
-            ]
+            param_hist = [{n: p.detach().cpu().clone() for n, p in net.named_parameters()}]
         param_save_indices = [int(final_step)]
 
     print("\nTraining complete!")
