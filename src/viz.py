@@ -2226,7 +2226,7 @@ def plot_irreps(group, show=False):
     FONT_SIZES = {"title": 30, "axes_label": 30, "tick_label": 30, "legend": 15}
 
     irreps = group.irreps()
-    group_elements = group.elements
+    group_elements = group.elements()
 
     num_irreps = len(irreps)
     fig, axs = plt.subplots(1, num_irreps, figsize=(3 * num_irreps, 4), squeeze=False)
