@@ -45,12 +45,7 @@ class CyclicGroup(Group):
 
     def fourier(self, signal: np.ndarray) -> list[np.ndarray]:
         """DFT-based group Fourier transform for cyclic groups."""
-        return [
-            irrep_mat
-            for irrep_mat in [
-                np.array([[coef]]) for coef in np.fft.fft(signal)
-            ]
-        ]
+        return [irrep_mat for irrep_mat in [np.array([[coef]]) for coef in np.fft.fft(signal)]]
 
     def inverse_fourier(self, fourier_coefs: list[np.ndarray]) -> np.ndarray:
         """IDFT-based inverse group Fourier transform for cyclic groups."""

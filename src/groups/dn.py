@@ -47,15 +47,11 @@ class DihedralGroup(Group):
         irreps = []
 
         trivial = np.ones((n_elems, 1, 1))
-        irreps.append(IrreducibleRepresentation(
-            f"D{N}|[irrep_0,0]:1", trivial
-        ))
+        irreps.append(IrreducibleRepresentation(f"D{N}|[irrep_0,0]:1", trivial))
 
         sign = np.ones((n_elems, 1, 1))
         sign[N:] = -1.0
-        irreps.append(IrreducibleRepresentation(
-            f"D{N}|[irrep_1,0]:1", sign
-        ))
+        irreps.append(IrreducibleRepresentation(f"D{N}|[irrep_1,0]:1", sign))
 
         n_2d = (N - 1) // 2
         for j in range(1, n_2d + 1):
@@ -65,9 +61,7 @@ class DihedralGroup(Group):
                 c, s = np.cos(angle), np.sin(angle)
                 mats[k] = [[c, -s], [s, c]]
                 mats[N + k] = [[c, s], [s, -c]]
-            irreps.append(IrreducibleRepresentation(
-                f"D{N}|[irrep_1,{j}]:2", mats
-            ))
+            irreps.append(IrreducibleRepresentation(f"D{N}|[irrep_1,{j}]:2", mats))
 
         if N % 2 == 0:
             half = N // 2
@@ -76,17 +70,13 @@ class DihedralGroup(Group):
             for k in range(N):
                 rep_1_half[k, 0, 0] = (-1.0) ** k
                 rep_1_half[N + k, 0, 0] = -((-1.0) ** k)
-            irreps.append(IrreducibleRepresentation(
-                f"D{N}|[irrep_1,{half}]:1", rep_1_half
-            ))
+            irreps.append(IrreducibleRepresentation(f"D{N}|[irrep_1,{half}]:1", rep_1_half))
 
             rep_0_half = np.empty((n_elems, 1, 1))
             for k in range(N):
                 rep_0_half[k, 0, 0] = (-1.0) ** k
                 rep_0_half[N + k, 0, 0] = (-1.0) ** k
-            irreps.append(IrreducibleRepresentation(
-                f"D{N}|[irrep_0,{half}]:1", rep_0_half
-            ))
+            irreps.append(IrreducibleRepresentation(f"D{N}|[irrep_0,{half}]:1", rep_0_half))
 
         return irreps
 

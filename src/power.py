@@ -47,7 +47,7 @@ def loss_plateau_predictions_cyclic(template, template_dim, p1=None, p2=None):
         ft = np.fft.rfft2(template_2d)
         M, N = template_2d.shape
         power = np.abs(ft) ** 2 / (M * N)
-        power[(N // 2 + 1):, 0] = 0
+        power[(N // 2 + 1) :, 0] = 0
         power *= 2
         power[0, 0] /= 2
         if N % 2 == 0:
@@ -60,7 +60,7 @@ def loss_plateau_predictions_cyclic(template, template_dim, p1=None, p2=None):
         ft = np.fft.fft(template)
         power = np.abs(ft[:num_coefficients]) ** 2 / group_size
         if group_size % 2 == 0:
-            power[1: num_coefficients - 1] *= 2
+            power[1 : num_coefficients - 1] *= 2
         else:
             power[1:] *= 2
 
@@ -351,11 +351,11 @@ def get_power_2d(points, no_freq=False):
 
     weight = 2 * np.ones((M, N // 2 + 1))
     weight[0, 0] = 1
-    weight[(M // 2 + 1):, 0] = 0
+    weight[(M // 2 + 1) :, 0] = 0
     if M % 2 == 0:
         weight[M // 2, 0] = 1
     if N % 2 == 0:
-        weight[(M // 2 + 1):, N // 2] = 0
+        weight[(M // 2 + 1) :, N // 2] = 0
         weight[0, N // 2] = 1
     if (M % 2 == 0) and (N % 2 == 0):
         weight[M // 2, N // 2] = 1

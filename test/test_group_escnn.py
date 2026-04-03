@@ -23,6 +23,7 @@ from src.groups.oh import OctahedralGroup  # noqa: E402
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _escnn_irrep_matrices(escnn_group):
     """Extract all irrep matrices from an escnn group as a list of (|G|, d, d) arrays."""
     irreps = escnn_group.irreps()
@@ -44,6 +45,7 @@ def _escnn_regular_rep_matrices(escnn_group):
 # ---------------------------------------------------------------------------
 # Fixtures: pairs of (our_group, escnn_group)
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture(params=[3, 5], ids=["D3", "D5"])
 def dihedral_pair(request):
@@ -125,9 +127,7 @@ class TestIrrepMatrices:
         ours, escnn_g = group_pair
         escnn_mats_list = _escnn_irrep_matrices(escnn_g)
 
-        for i, (our_irrep, escnn_mats) in enumerate(
-            zip(ours.irreps(), escnn_mats_list)
-        ):
+        for i, (our_irrep, escnn_mats) in enumerate(zip(ours.irreps(), escnn_mats_list)):
             for g in range(ours.order):
                 np.testing.assert_allclose(
                     our_irrep(g),
@@ -166,16 +166,11 @@ class TestFourier:
         escnn_elements = list(escnn_g.elements)
         escnn_coefs = []
         for irrep in escnn_irreps:
-            coef = sum(
-                signal[i_g] * irrep(g).conj().T
-                for i_g, g in enumerate(escnn_elements)
-            )
+            coef = sum(signal[i_g] * irrep(g).conj().T for i_g, g in enumerate(escnn_elements))
             escnn_coefs.append(coef)
         assert len(our_coefs) == len(escnn_coefs)
         for i, (oc, ec) in enumerate(zip(our_coefs, escnn_coefs)):
-            np.testing.assert_allclose(
-                oc, ec, atol=1e-10, err_msg=f"fourier coef {i}"
-            )
+            np.testing.assert_allclose(oc, ec, atol=1e-10, err_msg=f"fourier coef {i}")
 
 
 class TestPowerSpectrum:
@@ -191,10 +186,7 @@ class TestPowerSpectrum:
         escnn_elements = list(escnn_g.elements)
         escnn_coefs = []
         for irrep in escnn_irreps:
-            coef = sum(
-                signal[i_g] * irrep(g).conj().T
-                for i_g, g in enumerate(escnn_elements)
-            )
+            coef = sum(signal[i_g] * irrep(g).conj().T for i_g, g in enumerate(escnn_elements))
             escnn_coefs.append(coef)
         escnn_ps = np.zeros(len(escnn_irreps))
         for i, irrep in enumerate(escnn_irreps):

@@ -235,9 +235,7 @@ class TestPowersPerNeuronRows:
         out = power.powers_per_neuron_rows(W, group)
         assert out.shape == (h, len(group.irreps()))
         for i in range(h):
-            np.testing.assert_allclose(
-                out[i], group.power_spectrum(W[i]), rtol=1e-10
-            )
+            np.testing.assert_allclose(out[i], group.power_spectrum(W[i]), rtol=1e-10)
 
 
 class TestGroupPowerSpectrum:
@@ -257,6 +255,8 @@ class TestGroupPowerSpectrum:
 
         expected = [p * group.order for p in powers]
         np.testing.assert_allclose(
-            spectrum, expected, atol=1e-4,
-            err_msg=f"Power spectrum mismatch: {spectrum} vs {expected}"
+            spectrum,
+            expected,
+            atol=1e-4,
+            err_msg=f"Power spectrum mismatch: {spectrum} vs {expected}",
         )

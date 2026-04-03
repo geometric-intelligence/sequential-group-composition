@@ -14,9 +14,7 @@ class IrreducibleRepresentation:
 
     def __init__(self, name: str, matrices: np.ndarray):
         if matrices.ndim != 3 or matrices.shape[1] != matrices.shape[2]:
-            raise ValueError(
-                f"matrices must have shape (n_elements, d, d), got {matrices.shape}"
-            )
+            raise ValueError(f"matrices must have shape (n_elements, d, d), got {matrices.shape}")
         self._name = name
         self._matrices = np.asarray(matrices, dtype=np.float64)
         self._size = int(matrices.shape[1])
