@@ -141,9 +141,14 @@ class CyclicPower:
 
         return power
 
-    def loss_plateau_predictions(self):
+    def loss_plateau_predictions(self, verbose: bool = True):
         """Compute theoretical loss plateau predictions from the template's power spectrum.
         (as predicted by AGF)
+
+        Parameters
+        ----------
+        verbose : bool
+            If False, suppress diagnostic prints (e.g. when batch-generating figures).
 
         Returns
         -------
@@ -153,17 +158,18 @@ class CyclicPower:
         power = self.power
 
         if self.template_dim == 2:
-            if self._p1 is not None and self._p2 is not None:
-                print(
-                    "Computing loss plateau predictions for template of shape:",
-                    (self._p1, self._p2),
-                )
-            else:
-                img_size = int(np.sqrt(len(self.template)))
-                print(
-                    "Computing loss plateau predictions for template of shape:",
-                    (img_size, img_size),
-                )
+            if verbose:
+                if self._p1 is not None and self._p2 is not None:
+                    print(
+                        "Computing loss plateau predictions for template of shape:",
+                        (self._p1, self._p2),
+                    )
+                else:
+                    img_size = int(np.sqrt(len(self.template)))
+                    print(
+                        "Computing loss plateau predictions for template of shape:",
+                        (img_size, img_size),
+                    )
             power = power.flatten()
 
         nonzero_power_mask = power > 1e-20
@@ -225,10 +231,15 @@ class GroupPower:
 
         return np.array(power_spectrum)
 
-    def loss_plateau_predictions(self):
+    def loss_plateau_predictions(self, verbose: bool = True):
         """Compute theoretical loss plateau predictions from the template's power spectrum.
 
         The loss plateau predictions give the levels of the loss plot.
+
+        Parameters
+        ----------
+        verbose : bool
+            If False, suppress diagnostic prints.
 
         Returns
         -------
@@ -236,11 +247,13 @@ class GroupPower:
             Theoretical loss plateau predictions for each nonzero power, in descending order.
         """
         p = len(self.template)
-        print("Computing loss plateau predictions for template of shape:", (p,))
+        if verbose:
+            print("Computing loss plateau predictions for template of shape:", (p,))
         power = self.power
         nonzero_power_mask = power > 1e-20
         power = power[nonzero_power_mask]
-        print("Found ", len(power), "non-zero power coefficients.")
+        if verbose:
+            print("Found ", len(power), "non-zero power coefficients.")
         i_power_descending_order = np.argsort(power)[::-1]
         power = power[i_power_descending_order]
         plateau_predictions = [np.sum(power[k:]) for k in range(len(power))]
