@@ -62,8 +62,9 @@ NOTEBOOK_IDS = [nb.stem for nb in NOTEBOOKS]
 def notebook_test_env():
     """Set up environment for notebook testing."""
     env = os.environ.copy()
-    # Ensure TEST_MODE is enabled for faster execution
     env["NOTEBOOK_TEST_MODE"] = "1"
+    repo_root = str(get_repo_root())
+    env["PYTHONPATH"] = repo_root + os.pathsep + env.get("PYTHONPATH", "")
     return env
 
 

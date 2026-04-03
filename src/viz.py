@@ -451,7 +451,7 @@ def plot_predictions_1d(
     param_history,
     X_data,
     Y_data,
-    p,
+    group_size,
     steps=None,
     example_idx=None,
     save_path=None,
@@ -462,9 +462,9 @@ def plot_predictions_1d(
     Args:
         model: The trained model
         param_history: List of parameter snapshots from training
-        X_data: Input tensor (N, k, p)
-        Y_data: Target tensor (N, p)
-        p: Dimension
+        X_data: Input tensor (N, k, group_size)
+        Y_data: Target tensor (N, group_size)
+        group_size: Dimension of the group
         steps: List of epoch indices to plot
         example_idx: Index of example to visualize
         save_path: Path to save figure
@@ -503,7 +503,7 @@ def plot_predictions_1d(
     if len(steps) == 1:
         axes = axes.reshape(2, 1)
 
-    x = np.arange(p)
+    x = np.arange(group_size)
 
     for col, (step, pred_1d) in enumerate(zip(steps, preds)):
         axes[0, col].plot(x, pred_1d, "b-", lw=2)
@@ -539,7 +539,7 @@ def plot_predictions_1d(
 
 
 def _hidden_by_group_weights_from_state_dict(sd: dict) -> np.ndarray | None:
-    """Return weight matrix of shape (hidden, group_dim) for TwoLayerNet ``W`` or RNN ``W_out.T``."""
+    """Return weight matrix of shape (hidden, group_dim) for TwoLayerMLP ``W`` or RNN ``W_out.T``."""
     if "W" in sd:
         return sd["W"].detach().cpu().numpy()
     if "W_out" in sd:
@@ -585,7 +585,7 @@ def mode_colors_aligned_with_power_plot(
 def compute_w_dominant_irrep_fraction_data(
     param_hist: list,
     param_save_indices: list | np.ndarray,
-    p: int,
+    group_size: int,
     group_name: str,
     group=None,
     p1: int | None = None,
@@ -612,27 +612,23 @@ def compute_w_dominant_irrep_fraction_data(
     W0 = _hidden_by_group_weights_from_state_dict(param_hist[0])
     if W0 is None:
         return None
-    if W0.shape[1] != p:
+    if W0.shape[1] != group_size:
         return None
     if use_cyclic:
-        if group_name == "cnxcn" and p != p1 * p2:
+        if group_name == "cnxcn" and group_size != p1 * p2:
             return None
-    elif p != group.order():
+    elif group_size != group.order():
         return None
 
-    hidden_size = W0.shape[0]
+    hidden_dim = W0.shape[0]
 
     if use_cyclic:
         if group_name == "cn":
             probe = power.powers_per_neuron_rows_cyclic(W0[:1], template_dim=1)
         else:
-            probe = power.powers_per_neuron_rows_cyclic(
-                W0[:1], template_dim=2, p1=p1, p2=p2
-            )
+            probe = power.powers_per_neuron_rows_cyclic(W0[:1], template_dim=2, p1=p1, p2=p2)
         n_modes = probe.shape[1]
-        ylabel = (
-            r"Fraction in final dominant mode ($E_{\mathrm{dom}}/\max_t E_{\mathrm{tot}}$)"
-        )
+        ylabel = r"Fraction in final dominant mode ($E_{\mathrm{dom}}/\max_t E_{\mathrm{tot}}$)"
     else:
         n_modes = len(group.irreps())
         ylabel = r"Fraction in final dominant irrep ($E_{\mathrm{dom}}/\max_t E_{\mathrm{tot}}$)"
@@ -648,17 +644,13 @@ def compute_w_dominant_irrep_fraction_data(
     W_power_over_time = []
     for step in steps:
         W = _hidden_by_group_weights_from_state_dict(param_hist[step])
-        if W is None or W.shape != (hidden_size, p):
+        if W is None or W.shape != (hidden_dim, group_size):
             return None
         if use_cyclic:
             if group_name == "cn":
-                row_powers = power.powers_per_neuron_rows_cyclic(
-                    W, template_dim=1
-                )
+                row_powers = power.powers_per_neuron_rows_cyclic(W, template_dim=1)
             else:
-                row_powers = power.powers_per_neuron_rows_cyclic(
-                    W, template_dim=2, p1=p1, p2=p2
-                )
+                row_powers = power.powers_per_neuron_rows_cyclic(W, template_dim=2, p1=p1, p2=p2)
         else:
             row_powers = power.powers_per_neuron_rows(W, group)
         W_power_over_time.append(row_powers)
@@ -667,8 +659,8 @@ def compute_w_dominant_irrep_fraction_data(
     final_power = W_power_over_time[-1]
     dominant_idx = np.argmax(final_power, axis=1)
 
-    dominant_fraction_over_time = np.zeros((len(steps), hidden_size))
-    for h in range(hidden_size):
+    dominant_fraction_over_time = np.zeros((len(steps), hidden_dim))
+    for h in range(hidden_dim):
         k = dominant_idx[h]
         dominant_energy = W_power_over_time[:, h, k]
         total_energy = W_power_over_time[:, h, :].sum(axis=1)
@@ -696,7 +688,9 @@ def save_w_dominant_irrep_fraction_npz(path: str | Path, data: dict) -> None:
     np.savez_compressed(
         path,
         x_plot=np.asarray(data["x_plot"], dtype=np.float64),
-        dominant_fraction_over_time=np.asarray(data["dominant_fraction_over_time"], dtype=np.float64),
+        dominant_fraction_over_time=np.asarray(
+            data["dominant_fraction_over_time"], dtype=np.float64
+        ),
         dominant_idx=np.asarray(data["dominant_idx"], dtype=np.int64),
         n_modes=np.int32(data["n_modes"]),
         ylabel=np.array(data["ylabel"], dtype=object),
@@ -732,9 +726,9 @@ def maybe_save_w_dominant_irrep_fraction_npz(
     run_dir = Path(run_dir)
     gn = config["data"]["group_name"]
     if gn == "cn":
-        p = config["data"]["p"]
+        group_size = config["data"]["p"]
         data = compute_w_dominant_irrep_fraction_data(
-            param_hist, param_save_indices, p, "cn"
+            param_hist, param_save_indices, group_size, "cn"
         )
     elif gn == "cnxcn":
         p1, p2 = config["data"]["p1"], config["data"]["p2"]
@@ -793,9 +787,9 @@ def load_w_dominant_irrep_fraction_for_run_dir(run_dir: str | Path) -> dict | No
 
     gn = config["data"]["group_name"]
     if gn == "cn":
-        p = config["data"]["p"]
+        group_size = config["data"]["p"]
         return compute_w_dominant_irrep_fraction_data(
-            param_hist, param_save_indices, p, "cn"
+            param_hist, param_save_indices, group_size, "cn"
         )
     if gn == "cnxcn":
         p1, p2 = config["data"]["p1"], config["data"]["p2"]
@@ -863,9 +857,9 @@ def draw_w_dominant_irrep_fraction_ax(
     frac = np.asarray(data["dominant_fraction_over_time"])
     dom_idx = np.asarray(data["dominant_idx"], dtype=int)
     ylabel = data["ylabel"]
-    hidden_size = frac.shape[1]
+    hidden_dim = frac.shape[1]
 
-    for h in range(hidden_size):
+    for h in range(hidden_dim):
         if not np.any(np.isfinite(frac[:, h])):
             continue
         k = int(dom_idx[h])
@@ -894,7 +888,7 @@ def draw_w_dominant_irrep_fraction_ax(
 def plot_w_dominant_irrep_fraction(
     param_hist: list,
     param_save_indices: list[int],
-    p: int,
+    group_size: int,
     x_label: str,
     group_name: str,
     group=None,
@@ -909,7 +903,7 @@ def plot_w_dominant_irrep_fraction(
 
     **What you see**
 
-    - **Each colored line is one hidden neuron** (one row of ``W`` for :class:`~src.model.TwoLayerNet`,
+    - **Each colored line is one hidden neuron** (one row of ``W`` for :class:`~src.model.TwoLayerMLP`,
       or one column of ``W_out`` turned into a row for RNN/MLP models). Lines use the color of the
       **mode or irrep** that neuron ends up favoring (see below).
     - **Inactive** neurons (their total spectral power never exceeds ``active_energy_thresh``) are
@@ -917,7 +911,7 @@ def plot_w_dominant_irrep_fraction(
 
     **What “power” and “fraction” mean**
 
-    Each neuron's weights form a vector on the group (length ``p``). That vector is decomposed into a
+    Each neuron's weights form a vector on the group (length ``group_size``). That vector is decomposed into a
     **power spectrum**: either cyclic bins via :class:`src.power.CyclicPower` (for ``cn`` / ``cnxcn``)
     or irrep-wise power via :class:`src.power.GroupPower` (for escnn groups). **Total power** is the
     sum of that spectrum—how much “energy” the row has in Fourier / group space. **Fraction of power**
@@ -948,7 +942,7 @@ def plot_w_dominant_irrep_fraction(
     Args:
         param_hist: Parameter snapshots from training
         param_save_indices: Step or epoch index for each snapshot (same length as ``param_hist``)
-        p: Flattened group dimension (second axis of ``W`` / ``W_out.T``)
+        group_size: Flattened group dimension (second axis of ``W`` / ``W_out.T``)
         x_label: X-axis label (e.g. ``\"Epoch\"`` or ``\"Step\"``)
         group_name: ``\"cn\"``, ``\"cnxcn\"``, or an escnn-backed name (e.g. ``\"dihedral\"``)
         group: escnn ``Group`` (required unless ``group_name`` is ``cn`` or ``cnxcn``)
@@ -969,7 +963,7 @@ def plot_w_dominant_irrep_fraction(
     data = compute_w_dominant_irrep_fraction_data(
         param_hist,
         param_save_indices,
-        p,
+        group_size,
         group_name,
         group=group,
         p1=p1,
@@ -1012,7 +1006,7 @@ def plot_power_1d(
     X_data,
     Y_data,
     template_1d,
-    p,
+    group_size,
     loss_history,
     param_save_indices=None,
     num_freqs_to_track=10,
@@ -1030,10 +1024,10 @@ def plot_power_1d(
     Args:
         model: The trained model
         param_history: List of parameter snapshots
-        X_data: Input tensor (N, k, p)
-        Y_data: Target tensor (N, p)
-        template_1d: The 1D template array (p,)
-        p: Dimension of the template
+        X_data: Input tensor (N, k, group_size)
+        Y_data: Target tensor (N, group_size)
+        template_1d: The 1D template array (group_size,)
+        group_size: Dimension of the group
         loss_history: List of loss values
         param_save_indices: List of step/epoch numbers where params were saved
         num_freqs_to_track: Number of top frequencies to track
@@ -1159,7 +1153,7 @@ def plot_power_cn(
     param_save_indices,
     X_eval,
     template_1d: np.ndarray,
-    p: int,
+    group_size: int,
     k: int,
     optimizer: str,
     init_scale: float,
@@ -1605,7 +1599,7 @@ def plot_predictions_group(
     param_hist,
     X_eval,
     Y_eval,
-    group_order: int,
+    group_size: int,
     checkpoint_indices: list,
     save_path: str = None,
     num_samples: int = 5,
@@ -1616,9 +1610,9 @@ def plot_predictions_group(
     Args:
         model: Trained model
         param_hist: List of parameter snapshots
-        X_eval: Input evaluation tensor (N, k, group_order)
-        Y_eval: Target evaluation tensor (N, group_order)
-        group_order: Order of the group
+        X_eval: Input evaluation tensor (N, k, group_size)
+        Y_eval: Target evaluation tensor (N, group_size)
+        group_size: Order of the group
         checkpoint_indices: Indices into param_hist to visualize
         save_path: Path to save the plot
         num_samples: Number of samples to show
@@ -1651,7 +1645,7 @@ def plot_predictions_group(
 
         for row, (output, target) in enumerate(zip(outputs_np, targets_np)):
             ax = axes[row, col]
-            x_axis = np.arange(group_order)
+            x_axis = np.arange(group_size)
 
             ax.bar(x_axis - 0.15, target, width=0.3, label="Target", alpha=0.7, color="#2ecc71")
             ax.bar(x_axis + 0.15, output, width=0.3, label="Output", alpha=0.7, color="#e74c3c")
@@ -1701,7 +1695,7 @@ def plot_power_group(
         param_hist: List of parameter snapshots
         param_save_indices: List mapping param_hist index to epoch number
         X_eval: Input evaluation tensor
-        template: Template array (group_order,)
+        template: Template array (group_size,)
         group: escnn group object
         k: Sequence length
         optimizer: Optimizer name
@@ -2001,7 +1995,7 @@ def plot_loss_power_and_weight_power(
         wdata = compute_w_dominant_irrep_fraction_data(
             param_hist,
             weight_kw["param_save_indices"],
-            weight_kw["p"],
+            weight_kw["group_size"],
             weight_kw["group_name"],
             group=weight_kw.get("group"),
             p1=weight_kw.get("p1"),

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Parameter sweep experiment runner for QuadraticRNN and SequentialMLP training.
+Parameter sweep experiment runner for QuadraticRNN and TwoLayerMLP training.
 
 Takes an experiment configuration file and runs all parameter combinations
 with multiple seeds for uncertainty quantification.
@@ -712,7 +712,7 @@ def run_parameter_sweep(
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Run parameter sweep experiment for QuadraticRNN or SequentialMLP"
+        description="Run parameter sweep experiment for QuadraticRNN or TwoLayerMLP"
     )
     parser.add_argument("--sweep", type=str, required=True, help="Path to sweep configuration file")
     parser.add_argument(

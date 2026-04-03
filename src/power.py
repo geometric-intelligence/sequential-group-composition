@@ -10,8 +10,8 @@ class CyclicPower:
 
     Parameters
     ----------
-    template : ndarray (p*p)
-        Flattened 2D template array.
+    template : ndarray (group_size,) or (group_size*group_size,)
+        Flattened template array.
     template_dim : int
         ``1`` for C_n (1D cyclic), ``2`` for C_n × C_m as a 2D grid.
     p1, p2 : int, optional
@@ -185,12 +185,12 @@ class CyclicPower:
 
 
 class GroupPower:
-    """Compute and store the power spectrum of the template for the Dihedral group.
+    """Compute and store the power spectrum of the template for a generic group.
 
     Parameters
     ----------
-    template : ndarray (p,)
-        1D template array.
+    template : ndarray (group_size,)
+        1D template array of length ``group.order()``.
     group : Group (escnn object)
         The group the template is defined over.
         Also specifies which fourier transform to apply, and thus
@@ -269,21 +269,19 @@ def powers_per_neuron_rows(W: np.ndarray, group) -> np.ndarray:
 
     Parameters
     ----------
-    W : ndarray, shape (hidden_size, group.order())
+    W : ndarray, shape (hidden_dim, group.order())
     group : escnn ``Group``
         Must match the group structure of the weight rows.
 
     Returns
     -------
-    ndarray, shape (hidden_size, len(group.irreps()))
+    ndarray, shape (hidden_dim, len(group.irreps()))
         ``out[h, i]`` is the normalized irrep power at index ``i`` for hidden unit ``h``.
     """
     if W.ndim != 2:
         raise ValueError(f"W must be 2-D, got shape {W.shape}")
     if W.shape[1] != group.order():
-        raise ValueError(
-            f"W.shape[1] ({W.shape[1]}) must equal group.order() ({group.order()})"
-        )
+        raise ValueError(f"W.shape[1] ({W.shape[1]}) must equal group.order() ({group.order()})")
     hidden = W.shape[0]
     n_irreps = len(group.irreps())
     out = np.empty((hidden, n_irreps))
@@ -303,7 +301,7 @@ def powers_per_neuron_rows_cyclic(
 
     Parameters
     ----------
-    W : ndarray, shape (hidden_size, p) or (hidden_size, p1 * p2)
+    W : ndarray, shape (hidden_dim, group_size) or (hidden_dim, p1 * p2)
     template_dim : int
         ``1`` for C_n (1D), ``2`` for CnxCn grid flattened row-major.
     p1, p2 : int, optional
@@ -312,7 +310,7 @@ def powers_per_neuron_rows_cyclic(
     Returns
     -------
     ndarray
-        For 1D, shape ``(hidden_size, p // 2 + 1)``. For 2D, shape ``(hidden_size, M * (N//2 + 1))``
+        For 1D, shape ``(hidden_dim, group_size // 2 + 1)``. For 2D, shape ``(hidden_dim, M * (N//2 + 1))``
         with ``M, N = p1, p2`` (flattened :class:`CyclicPower` 2D power).
     """
     if W.ndim != 2:
@@ -330,9 +328,7 @@ def powers_per_neuron_rows_cyclic(
     if p1 is None or p2 is None:
         raise ValueError("p1 and p2 are required for cyclic 2D (CyclicPower template_dim=2)")
     if W.shape[1] != p1 * p2:
-        raise ValueError(
-            f"W.shape[1] ({W.shape[1]}) must equal p1*p2 ({p1 * p2})"
-        )
+        raise ValueError(f"W.shape[1] ({W.shape[1]}) must equal p1*p2 ({p1 * p2})")
     cp0 = CyclicPower(W[0], template_dim=2, p1=p1, p2=p2)
     n_bins = cp0.power.size
     out = np.empty((hidden, n_bins))
@@ -349,8 +345,8 @@ def model_power_over_time(group_name, model, param_history, model_inputs, group=
     ----------
     group_name : str
         Group type (e.g., 'cnxcn').
-    model : TwoLayerNet
-        The trained model.
+    model : nn.Module
+        The trained model (TwoLayerMLP or QuadraticRNN).
     param_history : list of dict
         List of model parameters at each training step.
     model_inputs : torch.Tensor
