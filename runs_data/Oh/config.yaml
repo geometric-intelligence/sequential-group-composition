@@ -20,18 +20,17 @@ device: cuda:0
 model:
   hidden_dim: 300
   init_scale: 1.0e-05
-  model_type: TwoLayerNet
+  model_type: TwoLayerMLP
   nonlinearity: square
   output_scale: 1.0
   return_all_outputs: false
-  transform_type: quadratic
 training:
   betas:
   - 0.9
   - 0.999
   degree: null
   dense_save_until: 10
-  epochs: 1000000
+  epochs: 1000
   grad_clip: 0.1
   learning_rate: 0.001
   mode: offline

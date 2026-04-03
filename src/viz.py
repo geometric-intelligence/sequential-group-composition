@@ -110,9 +110,9 @@ def _training_loss_log_y_floor(ax):
 
 
 def _theory_loss_y_levels_from_run(run_dir: Path, cfg: dict) -> list[float] | None:
-    """Template MSE plateau levels via :class:`~src.power.CyclicPower` / :class:`~src.power.GroupPower`.
+    """Template MSE plateau levels via loss_plateau_predictions functions.
 
-    Uses ``loss_plateau_predictions()`` only (no duplicate alpha arithmetic here).
+    Uses ``loss_plateau_predictions_cyclic`` / ``loss_plateau_predictions_group``.
     """
     import src.power as power
 
@@ -125,29 +125,26 @@ def _theory_loss_y_levels_from_run(run_dir: Path, cfg: dict) -> list[float] | No
 
     if gn == "cn":
         t_flat = np.asarray(template_np).ravel()
-        cp = power.CyclicPower(t_flat, template_dim=1)
-        out = cp.loss_plateau_predictions(verbose=False)
+        out = power.loss_plateau_predictions_cyclic(t_flat, template_dim=1)
     elif gn == "cnxcn":
         p1, p2 = cfg["data"]["p1"], cfg["data"]["p2"]
         t_flat = np.asarray(template_np).ravel()
-        cp = power.CyclicPower(t_flat, template_dim=2, p1=p1, p2=p2)
-        out = cp.loss_plateau_predictions(verbose=False)
+        out = power.loss_plateau_predictions_cyclic(t_flat, template_dim=2, p1=p1, p2=p2)
     elif gn in ("dihedral", "octahedral", "A5"):
         if gn == "dihedral":
-            from escnn.group import DihedralGroup
+            from src.groups import DihedralGroup
 
             group = DihedralGroup(N=cfg["data"].get("group_n", 3))
         elif gn == "octahedral":
-            from escnn.group import Octahedral
+            from src.groups import OctahedralGroup
 
-            group = Octahedral()
+            group = OctahedralGroup()
         else:
-            from escnn.group import Icosahedral
+            from src.groups import IcosahedralGroup
 
-            group = Icosahedral()
+            group = IcosahedralGroup()
         t = np.asarray(template_np).ravel()
-        gp = power.GroupPower(t, group)
-        out = gp.loss_plateau_predictions(verbose=False)
+        out = power.loss_plateau_predictions_group(t, group)
     else:
         return None
 
@@ -330,8 +327,9 @@ def plot_train_loss_with_theory(
 
     ax.plot(x_values, loss_history, lw=4, color="#1f77b4", label="Training Loss")
 
-    cp = power.CyclicPower(template_2d.ravel(), template_dim=2, p1=p1, p2=p2)
-    for y in cp.loss_plateau_predictions(verbose=False):
+    for y in power.loss_plateau_predictions_cyclic(
+        template_2d.ravel(), template_dim=2, p1=p1, p2=p2
+    ):
         ax.axhline(y=y, color="black", linestyle="--", linewidth=2, zorder=-2)
 
     ax.set_xlabel(x_label, fontsize=24)
@@ -617,7 +615,7 @@ def compute_w_dominant_irrep_fraction_data(
     if use_cyclic:
         if group_name == "cnxcn" and group_size != p1 * p2:
             return None
-    elif group_size != group.order():
+    elif group_size != group.order:
         return None
 
     hidden_dim = W0.shape[0]
@@ -746,7 +744,7 @@ def maybe_save_w_dominant_irrep_fraction_npz(
         data = compute_w_dominant_irrep_fraction_data(
             param_hist,
             param_save_indices,
-            group.order(),
+            group.order,
             gn,
             group=group,
         )
@@ -802,24 +800,24 @@ def load_w_dominant_irrep_fraction_for_run_dir(run_dir: str | Path) -> dict | No
             p2=p2,
         )
     if gn == "dihedral":
-        from escnn.group import DihedralGroup
+        from src.groups import DihedralGroup
 
         group = DihedralGroup(N=config["data"].get("group_n", 3))
     elif gn == "octahedral":
-        from escnn.group import Octahedral
+        from src.groups import OctahedralGroup
 
-        group = Octahedral()
+        group = OctahedralGroup()
     elif gn == "A5":
-        from escnn.group import Icosahedral
+        from src.groups import IcosahedralGroup
 
-        group = Icosahedral()
+        group = IcosahedralGroup()
     else:
         return None
 
     return compute_w_dominant_irrep_fraction_data(
         param_hist,
         param_save_indices,
-        group.order(),
+        group.order,
         gn,
         group=group,
     )
@@ -912,8 +910,8 @@ def plot_w_dominant_irrep_fraction(
     **What “power” and “fraction” mean**
 
     Each neuron's weights form a vector on the group (length ``group_size``). That vector is decomposed into a
-    **power spectrum**: either cyclic bins via :class:`src.power.CyclicPower` (for ``cn`` / ``cnxcn``)
-    or irrep-wise power via :class:`src.power.GroupPower` (for escnn groups). **Total power** is the
+    **power spectrum**: either cyclic bins via FFT (for ``cn`` / ``cnxcn``)
+    or irrep-wise power via ``group.power_spectrum`` (for generic groups). **Total power** is the
     sum of that spectrum—how much “energy” the row has in Fourier / group space. **Fraction of power**
     here means: at time ``t``, take the power in **one** chosen mode and divide by a **single**
     normalization: the **maximum** of total power that neuron ever had over training. So the y-axis
@@ -944,8 +942,8 @@ def plot_w_dominant_irrep_fraction(
         param_save_indices: Step or epoch index for each snapshot (same length as ``param_hist``)
         group_size: Flattened group dimension (second axis of ``W`` / ``W_out.T``)
         x_label: X-axis label (e.g. ``\"Epoch\"`` or ``\"Step\"``)
-        group_name: ``\"cn\"``, ``\"cnxcn\"``, or an escnn-backed name (e.g. ``\"dihedral\"``)
-        group: escnn ``Group`` (required unless ``group_name`` is ``cn`` or ``cnxcn``)
+        group_name: ``\"cn\"``, ``\"cnxcn\"``, or a group name (e.g. ``\"dihedral\"``)
+        group: ``Group`` (required unless ``group_name`` is ``cn`` or ``cnxcn``)
         p1, p2: Grid shape for ``cnxcn`` (required when ``group_name == \"cnxcn\"``)
         save_path: If set, save figure to this path
         show: If True, display the figure
@@ -1097,12 +1095,12 @@ def plot_power_1d(
 
     ax1.plot(loss_epochs, loss_history_subset, lw=4, color="#1f77b4", label="Training Loss")
 
-    cp_theory = power.CyclicPower(np.asarray(template_1d).ravel(), template_dim=1)
-    y_levels = np.array(cp_theory.loss_plateau_predictions(verbose=False), dtype=float)
-
-    n_bands = (
-        max(0, min(len(tracked_freqs), len(y_levels) - 1)) if len(y_levels) else 0
+    y_levels = np.array(
+        power.loss_plateau_predictions_cyclic(np.asarray(template_1d).ravel(), template_dim=1),
+        dtype=float,
     )
+
+    n_bands = max(0, min(len(tracked_freqs), len(y_levels) - 1)) if len(y_levels) else 0
     for i in range(n_bands):
         y_top = y_levels[i]
         y_bot = y_levels[i + 1]
@@ -1164,13 +1162,12 @@ def plot_power_cn(
 ):
     """Plot power spectrum of model outputs vs template for cyclic group Cn.
 
-    Mirrors plot_power_group but uses CyclicPower (no escnn).
+    Mirrors plot_power_group but uses 1D FFT power.
     Each frequency mode is treated as a 1D irrep.
     """
     import src.power as power
 
-    template_power_obj = power.CyclicPower(template_1d, template_dim=1)
-    template_power = template_power_obj.power
+    template_power, _ = power.get_power_1d(template_1d)
     n_modes = len(template_power)
 
     print(f"  Template power spectrum (cn): {template_power}")
@@ -1315,13 +1312,12 @@ def plot_power_cnxcn(
 ):
     """Plot power spectrum of model outputs vs template for CnxCn group.
 
-    Mirrors plot_power_cn but uses 2D CyclicPower (rfft2).
+    Mirrors plot_power_cn but uses 2D rfft2 power.
     Each 2D frequency mode (u, v) is tracked separately.
     """
     import src.power as power
 
-    template_power_obj = power.CyclicPower(template_2d.flatten(), template_dim=2)
-    template_power_2d = template_power_obj.power  # (p1, p2//2+1)
+    template_power_2d = power.get_power_2d(template_2d, no_freq=True)  # (p1, p2//2+1)
     template_power = template_power_2d.flatten()
     n_modes = len(template_power)
     n_cols = p2 // 2 + 1
@@ -1687,7 +1683,7 @@ def plot_power_group(
 ):
     """Plot power spectrum of model outputs vs template over training.
 
-    Uses GroupPower from src/power.py for template power and model_power_over_time
+    Uses group.power_spectrum for template power and model_power_over_time
     for model output power over training checkpoints.
 
     Args:
@@ -1696,7 +1692,7 @@ def plot_power_group(
         param_save_indices: List mapping param_hist index to epoch number
         X_eval: Input evaluation tensor
         template: Template array (group_size,)
-        group: escnn group object
+        group: Group object
         k: Sequence length
         optimizer: Optimizer name
         init_scale: Initialization scale
@@ -1709,8 +1705,7 @@ def plot_power_group(
     irreps = group.irreps()
     n_irreps = len(irreps)
 
-    template_power_obj = power.GroupPower(template, group=group)
-    template_power = template_power_obj.power
+    template_power = group.power_spectrum(template)
 
     print(f"  Template power spectrum: {template_power}")
     print("  (These are dim^2 * diag_value^2 / |G| for each irrep)")
@@ -2231,7 +2226,7 @@ def plot_irreps(group, show=False):
     FONT_SIZES = {"title": 30, "axes_label": 30, "tick_label": 30, "legend": 15}
 
     irreps = group.irreps()
-    group_elements = group.elements
+    group_elements = group.elements()
 
     num_irreps = len(irreps)
     fig, axs = plt.subplots(1, num_irreps, figsize=(3 * num_irreps, 4), squeeze=False)

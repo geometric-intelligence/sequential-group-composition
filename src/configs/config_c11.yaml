@@ -17,11 +17,11 @@ data:
   powers: [0, 12.5, 10, 7.5, 5, 2.5] #[0.0, 200.0, 100.0, 50.0, 20.0, 5.]
 
 model:
-  model_type: TwoLayerNet     # Model architecture: 'QuadraticRNN' | 'SequentialMLP' | 'TwoLayerNet'
+  model_type: TwoLayerMLP     # Model architecture: 'QuadraticRNN' | 'SequentialMLP' | 'TwoLayerMLP'
   hidden_dim: 200             # Hidden layer width
   init_scale: 0.00001           # Weight initialization scale
-  nonlinearity: square        # Activation function (TwoLayerNet only): 'square' | ...
-  output_scale: 1.0           # Output layer scaling factor (TwoLayerNet only)
+  nonlinearity: square        # Activation function (TwoLayerMLP only): 'square' | ...
+  output_scale: 1.0           # Output layer scaling factor (TwoLayerMLP only)
   return_all_outputs: false   # true = seq-to-seq, false = seq-to-one (final output only)
 
 training:

@@ -21,8 +21,8 @@ model:
   model_type: TwoLayerMLP     # Model architecture: 'QuadraticRNN' | 'TwoLayerMLP'
   hidden_dim: 300             # Hidden layer width
   init_scale: 0.00001           # Weight initialization scale
-  nonlinearity: square        # Activation function (TwoLayerNet only): 'square' | ...
-  output_scale: 1.0           # Output layer scaling factor (TwoLayerNet only)
+  nonlinearity: square        # Activation function (TwoLayerMLP only): 'square' | ...
+  output_scale: 1.0           # Output layer scaling factor (TwoLayerMLP only)
   return_all_outputs: false   # true = seq-to-seq, false = seq-to-one (final output only)
 
 training:

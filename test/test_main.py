@@ -130,8 +130,8 @@ def test_main_d3(temp_run_dir, mock_savefig):
 def test_main_octahedral_config():
     """Test that octahedral config loads and validates correctly.
 
-    Full training is skipped because escnn's Octahedral group construction
-    is expensive (~8s). The D3 test already covers the full group pipeline
+    Full training is skipped because Octahedral group construction
+    is relatively expensive. The D3 test already covers the full group pipeline
     integration (same code path, just a different group).
     """
     import src.main as main
@@ -145,8 +145,8 @@ def test_main_octahedral_config():
 def test_main_a5_config():
     """Test that A5 config loads and validates correctly.
 
-    Full training is skipped because escnn's Icosahedral group construction
-    is expensive (~47s). The D3 test already covers the full group pipeline
+    Full training is skipped because Icosahedral group construction
+    is relatively expensive. The D3 test already covers the full group pipeline
     integration (same code path, just a different group).
     """
     import src.main as main
@@ -155,6 +155,29 @@ def test_main_a5_config():
     assert config["data"]["group_name"] == "A5"
     assert config["training"]["epochs"] == 2
     assert config["device"] == "cpu"
+
+
+def test_regenerate_plots_cn(temp_run_dir, mock_all_plots):
+    """Test regenerate_plots loads a saved run and dispatches to the right produce_plots.
+
+    Runs a tiny train_single_run to produce artifacts, then calls
+    regenerate_plots on the same directory with fresh mocks.
+    """
+    import src.main as main
+
+    config = main.load_config(str(CONFIG_FILES["c10"]))
+    main.train_single_run(config, run_dir=temp_run_dir)
+
+    mock_all_plots["produce_plots_cn"].reset_mock()
+
+    main.regenerate_plots(str(temp_run_dir), device="cpu")
+
+    mock_all_plots["produce_plots_cn"].assert_called_once()
+    call_kwargs = mock_all_plots["produce_plots_cn"].call_args[1]
+    mdl = call_kwargs["model"]
+    assert isinstance(mdl, main.model.TwoLayerMLP)
+    assert mdl.group_size == 10
+    assert mdl.k == 2
 
 
 if __name__ == "__main__":

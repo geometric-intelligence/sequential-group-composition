@@ -23,7 +23,7 @@ device: cuda:0
 model:
   hidden_dim: 300
   init_scale: 1.0e-05
-  model_type: TwoLayerNet
+  model_type: TwoLayerMLP
   nonlinearity: square
   output_scale: 1.0
   return_all_outputs: false
