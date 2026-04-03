@@ -110,9 +110,9 @@ def _training_loss_log_y_floor(ax):
 
 
 def _theory_loss_y_levels_from_run(run_dir: Path, cfg: dict) -> list[float] | None:
-    """Template MSE plateau levels via :class:`~src.power.CyclicPower` / :class:`~src.power.GroupPower`.
+    """Template MSE plateau levels via loss_plateau_predictions functions.
 
-    Uses ``loss_plateau_predictions()`` only (no duplicate alpha arithmetic here).
+    Uses ``loss_plateau_predictions_cyclic`` / ``loss_plateau_predictions_group``.
     """
     import src.power as power
 
@@ -125,29 +125,26 @@ def _theory_loss_y_levels_from_run(run_dir: Path, cfg: dict) -> list[float] | No
 
     if gn == "cn":
         t_flat = np.asarray(template_np).ravel()
-        cp = power.CyclicPower(t_flat, template_dim=1)
-        out = cp.loss_plateau_predictions(verbose=False)
+        out = power.loss_plateau_predictions_cyclic(t_flat, template_dim=1)
     elif gn == "cnxcn":
         p1, p2 = cfg["data"]["p1"], cfg["data"]["p2"]
         t_flat = np.asarray(template_np).ravel()
-        cp = power.CyclicPower(t_flat, template_dim=2, p1=p1, p2=p2)
-        out = cp.loss_plateau_predictions(verbose=False)
+        out = power.loss_plateau_predictions_cyclic(t_flat, template_dim=2, p1=p1, p2=p2)
     elif gn in ("dihedral", "octahedral", "A5"):
         if gn == "dihedral":
-            from escnn.group import DihedralGroup
+            from src.groups import DihedralGroup
 
             group = DihedralGroup(N=cfg["data"].get("group_n", 3))
         elif gn == "octahedral":
-            from escnn.group import Octahedral
+            from src.groups import OctahedralGroup
 
-            group = Octahedral()
+            group = OctahedralGroup()
         else:
-            from escnn.group import Icosahedral
+            from src.groups import IcosahedralGroup
 
-            group = Icosahedral()
+            group = IcosahedralGroup()
         t = np.asarray(template_np).ravel()
-        gp = power.GroupPower(t, group)
-        out = gp.loss_plateau_predictions(verbose=False)
+        out = power.loss_plateau_predictions_group(t, group)
     else:
         return None
 
@@ -330,8 +327,7 @@ def plot_train_loss_with_theory(
 
     ax.plot(x_values, loss_history, lw=4, color="#1f77b4", label="Training Loss")
 
-    cp = power.CyclicPower(template_2d.ravel(), template_dim=2, p1=p1, p2=p2)
-    for y in cp.loss_plateau_predictions(verbose=False):
+    for y in power.loss_plateau_predictions_cyclic(template_2d.ravel(), template_dim=2, p1=p1, p2=p2):
         ax.axhline(y=y, color="black", linestyle="--", linewidth=2, zorder=-2)
 
     ax.set_xlabel(x_label, fontsize=24)
@@ -1097,8 +1093,7 @@ def plot_power_1d(
 
     ax1.plot(loss_epochs, loss_history_subset, lw=4, color="#1f77b4", label="Training Loss")
 
-    cp_theory = power.CyclicPower(np.asarray(template_1d).ravel(), template_dim=1)
-    y_levels = np.array(cp_theory.loss_plateau_predictions(verbose=False), dtype=float)
+    y_levels = np.array(power.loss_plateau_predictions_cyclic(np.asarray(template_1d).ravel(), template_dim=1), dtype=float)
 
     n_bands = max(0, min(len(tracked_freqs), len(y_levels) - 1)) if len(y_levels) else 0
     for i in range(n_bands):

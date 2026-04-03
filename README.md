@@ -121,13 +121,13 @@ The repository includes preconfigured experiments for eight groups:
 | Group | Config | Order | k | Architecture |
 |:------|:-------|:-----:|:-:|:-------------|
 | Cyclic $C_{10}$ | `config_c10_k3.yaml` | 10 | 3 | SequentialMLP |
-| Cyclic $C_{11}$ | `config_c11.yaml` | 11 | 2 | TwoLayerNet |
+| Cyclic $C_{11}$ | `config_c11.yaml` | 11 | 2 | TwoLayerMLP |
 | Product $C_4 \times C_4$ | `config_c4x4_k3.yaml` | 16 | 3 | SequentialMLP |
-| Product $C_5 \times C_5$ | `config_c5xc5.yaml` | 25 | 2 | TwoLayerNet |
-| Dihedral $D_3$ | `config_d3.yaml` | 6 | 2 | TwoLayerNet |
-| Dihedral $D_5$ | `config_d5.yaml` | 10 | 2 | TwoLayerNet |
-| Octahedral $O_h$ | `config_oh.yaml` | 24 | 2 | TwoLayerNet |
-| Icosahedral $A_5$ | `config_a5.yaml` | 60 | 2 | TwoLayerNet |
+| Product $C_5 \times C_5$ | `config_c5xc5.yaml` | 25 | 2 | TwoLayerMLP |
+| Dihedral $D_3$ | `config_d3.yaml` | 6 | 2 | TwoLayerMLP |
+| Dihedral $D_5$ | `config_d5.yaml` | 10 | 2 | TwoLayerMLP |
+| Octahedral $O_h$ | `config_oh.yaml` | 24 | 2 | TwoLayerMLP |
+| Icosahedral $A_5$ | `config_a5.yaml` | 60 | 2 | TwoLayerMLP |
 
 ### Reproduce Paper's Figure
 
@@ -170,7 +170,7 @@ Key parameters in the YAML config files:
 | `data.group_name` | `cn`, `cnxcn`, `dihedral`, `octahedral`, `A5` | Group to learn |
 | `data.k` | integer | Number of elements to compose |
 | `data.template_type` | `custom_fourier`, `onehot`, `mnist`, `gaussian` | Template generation method |
-| `model.model_type` | `QuadraticRNN`, `SequentialMLP`, `TwoLayerNet` | Architecture |
+| `model.model_type` | `QuadraticRNN`, `SequentialMLP`, `TwoLayerMLP` | Architecture |
 | `model.hidden_dim` | integer | Hidden layer size |
 | `model.init_scale` | float | Weight initialization scale |
 | `training.optimizer` | `auto`, `adam`, `per_neuron`, `hybrid` | Optimizer (`auto` recommended) |
@@ -190,7 +190,7 @@ data:
   powers: [0.0, 3000.0, 2000.0, 1000.0]
 
 model:
-  model_type: TwoLayerNet
+  model_type: TwoLayerMLP
   hidden_dim: 300
   init_scale: 0.0001
 
@@ -209,7 +209,7 @@ training:
 group-agf/
 ├── src/                          # Source code
 │   ├── main.py                   # Training entry point (CLI)
-│   ├── model.py                  # TwoLayerNet, QuadraticRNN, SequentialMLP
+│   ├── model.py                  # TwoLayerMLP, QuadraticRNN, SequentialMLP
 │   ├── optimizer.py              # PerNeuronScaledSGD, HybridRNNOptimizer
 │   ├── dataset.py                # Dataset generation and loading
 │   ├── template.py               # Template construction functions
@@ -239,7 +239,7 @@ group-agf/
 
 | Model | Description | Input |
 |:------|:------------|:------|
-| **TwoLayerNet** | Two-layer feedforward network with configurable nonlinearity (square, relu, tanh, gelu) | Flattened binary pair `(N, 2 * group_size)` |
+| **TwoLayerMLP** | Two-layer feedforward network with configurable nonlinearity (square, relu, tanh, gelu) | Flattened binary pair `(N, 2 * group_size)` |
 | **QuadraticRNN** | Recurrent network: `h_t = (W_mix h_{t-1} + W_drive x_t)^2` | Sequence `(N, k, p)` |
 | **SequentialMLP** | Feedforward MLP with k-th power activation, permutation-invariant for commutative groups | Sequence `(N, k, p)` |
 
@@ -247,7 +247,7 @@ group-agf/
 
 | Optimizer | Description | Recommended for |
 |:----------|:------------|:----------------|
-| **PerNeuronScaledSGD** | SGD with per-neuron learning rate scaling exploiting model homogeneity | SequentialMLP, TwoLayerNet |
+| **PerNeuronScaledSGD** | SGD with per-neuron learning rate scaling exploiting model homogeneity | SequentialMLP, TwoLayerMLP |
 | **HybridRNNOptimizer** | Scaled SGD for MLP weights + Adam for recurrent weights | QuadraticRNN |
 | Adam (PyTorch built-in) | Standard Adam | QuadraticRNN |
 
