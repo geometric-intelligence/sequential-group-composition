@@ -100,33 +100,6 @@ def save_results(
     return metadata
 
 
-def _build_model_from_config(config, template_flat, device):
-    """Reconstruct a model from config (no weights loaded)."""
-    model_type = config["model"]["model_type"]
-    group_size = len(template_flat)
-
-    if model_type == "TwoLayerMLP":
-        m = model.TwoLayerMLP(
-            group_size=group_size,
-            hidden_dim=config["model"]["hidden_dim"],
-            k=config["data"]["k"],
-            nonlinearity=config["model"].get("nonlinearity", "square"),
-            init_scale=config["model"]["init_scale"],
-            output_scale=config["model"].get("output_scale", 1.0),
-        )
-    elif model_type == "QuadraticRNN":
-        m = model.QuadraticRNN(
-            group_size=group_size,
-            hidden_dim=config["model"]["hidden_dim"],
-            k=config["data"]["k"],
-            init_scale=config["model"]["init_scale"],
-            return_all_outputs=config["model"]["return_all_outputs"],
-        )
-    else:
-        raise ValueError(f"Unknown model_type: {model_type}")
-    return m.to(device)
-
-
 def _reconstruct_param_save_indices(config, num_saved):
     """Reconstruct param_save_indices from config when not saved to disk."""
     dense = config["training"].get("dense_save_until", 0)
@@ -177,9 +150,30 @@ def regenerate_plots(run_dir, device="cpu"):
     else:
         param_save_indices = _reconstruct_param_save_indices(config, len(param_hist))
 
-    mdl = _build_model_from_config(config, template.flatten(), device)
-
     group_name = config["data"]["group_name"]
+    group_size = len(template.flatten())
+    model_type = config["model"]["model_type"]
+
+    if model_type == "TwoLayerMLP":
+        mdl = model.TwoLayerMLP(
+            group_size=group_size,
+            hidden_dim=config["model"]["hidden_dim"],
+            k=config["data"]["k"],
+            nonlinearity=config["model"].get("nonlinearity", "square"),
+            init_scale=config["model"]["init_scale"],
+            output_scale=config["model"].get("output_scale", 1.0),
+        ).to(device)
+    elif model_type == "QuadraticRNN":
+        mdl = model.QuadraticRNN(
+            group_size=group_size,
+            hidden_dim=config["model"]["hidden_dim"],
+            k=config["data"]["k"],
+            init_scale=config["model"]["init_scale"],
+            return_all_outputs=config["model"]["return_all_outputs"],
+        ).to(device)
+    else:
+        raise ValueError(f"Unknown model_type: {model_type}")
+
     training_mode = config["training"]["mode"]
 
     if group_name == "cnxcn":
