@@ -229,7 +229,7 @@ def _add_line_labels(ax, lines_info, fontsize=12, min_frac_sep: float = 0.07):
             placements[i] = "above"
 
     for d, placement in zip(label_data, placements):
-        y_off = 7 if placement == "above" else -7
+        y_off = 3 if placement == "above" else -3
         va = "bottom" if placement == "above" else "top"
         ax.annotate(
             d["label"],
