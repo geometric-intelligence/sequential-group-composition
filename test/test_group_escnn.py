@@ -18,6 +18,7 @@ from src.groups.a5 import IcosahedralGroup  # noqa: E402
 from src.groups.dn import DihedralGroup  # noqa: E402
 from src.groups.oh import OctahedralGroup  # noqa: E402
 
+
 def _escnn_irrep_matrices(escnn_group):
     """Extract all irrep matrices from an escnn group as a list of (|G|, d, d) arrays."""
     irreps = escnn_group.irreps()

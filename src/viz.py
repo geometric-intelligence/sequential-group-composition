@@ -182,6 +182,7 @@ def model_power_over_time(group, model, param_history, model_inputs):
 
     return powers_over_time, steps
 
+
 def topk_template_freqs(template_2d: np.ndarray, K: int, min_power: float = 1e-20):
     """Return top-K (kx, ky) FFT2 bins by power for a 2D template.
 
