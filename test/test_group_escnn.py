@@ -18,11 +18,6 @@ from src.groups.a5 import IcosahedralGroup  # noqa: E402
 from src.groups.dn import DihedralGroup  # noqa: E402
 from src.groups.oh import OctahedralGroup  # noqa: E402
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
 def _escnn_irrep_matrices(escnn_group):
     """Extract all irrep matrices from an escnn group as a list of (|G|, d, d) arrays."""
     irreps = escnn_group.irreps()
@@ -39,11 +34,6 @@ def _escnn_regular_rep_matrices(escnn_group):
     regular_rep = escnn_group.representations["regular"]
     elements = list(escnn_group.elements)
     return np.array([regular_rep(g) for g in elements])
-
-
-# ---------------------------------------------------------------------------
-# Fixtures: pairs of (our_group, escnn_group)
-# ---------------------------------------------------------------------------
 
 
 @pytest.fixture(params=[3, 5], ids=["D3", "D5"])

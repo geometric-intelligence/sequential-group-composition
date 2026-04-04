@@ -37,11 +37,6 @@ SWEEP_CONFIGS = {
 }
 
 
-# ---------------------------------------------------------------------------
-# Unit tests (always run)
-# ---------------------------------------------------------------------------
-
-
 class TestDeepMergeDict:
     def test_simple_merge(self):
         base = {"a": 1, "b": 2}
@@ -151,11 +146,6 @@ class TestGenerateExperimentConfigs:
         config = load_sweep_config(str(SWEEP_CONFIGS["model_size"]))
         experiments = generate_experiment_configs(config)
         assert len(experiments) == 2
-
-
-# ---------------------------------------------------------------------------
-# Integration tests
-# ---------------------------------------------------------------------------
 
 
 @pytest.fixture

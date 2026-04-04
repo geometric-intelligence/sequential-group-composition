@@ -67,10 +67,6 @@ class GroupCompositionDataset(Dataset):
     def __getitem__(self, idx):
         return self.X[idx], self.Y[idx]
 
-    # ------------------------------------------------------------------
-    # Offline build
-    # ------------------------------------------------------------------
-
     @staticmethod
     def _build_group(
         template,
@@ -128,11 +124,6 @@ class GroupCompositionDataset(Dataset):
             Y = Y[:, 1:, :]
 
         return X, Y, sequence
-
-
-# ---------------------------------------------------------------------------
-# Private online dataset classes (GPU-optimized for abelian groups)
-# ---------------------------------------------------------------------------
 
 
 class _OnlineModularAdditionDataset2D(IterableDataset):

@@ -3,11 +3,184 @@ from pathlib import Path
 import matplotlib.gridspec as gridspec
 import matplotlib.pyplot as plt
 import numpy as np
+import torch
 from matplotlib.ticker import MaxNLocator
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
+
+def loss_plateau_predictions(template, group):
+    """Compute theoretical MSE loss plateau predictions for a group template.
+
+    Uses ``group.power_spectrum`` to obtain per-irrep power, normalizes by
+    ``|G|`` (so that the total matches ``||template||^2``, i.e. the Parseval
+    convention used by ``nn.MSELoss``), then returns cumulative sums in
+    descending power order.
+
+    Replaces the former ``loss_plateau_predictions_cyclic`` (which used
+    ``np.fft.rfft`` / ``np.fft.rfft2`` with built-in ``1/N`` normalization)
+    and ``loss_plateau_predictions_group``.  Equivalence verified in
+    ``test/test_refactor_equivalence.py``: the ``1/|G|`` normalization of
+    ``group.power_spectrum`` is the only difference; after correction the
+    plateaus match the legacy cyclic code to machine precision.
+
+    Parameters
+    ----------
+    template : np.ndarray, shape (group.order,)
+        The template array (mean-centered).
+    group : Group
+        A group instance with a ``power_spectrum`` method and an ``order``
+        property.
+
+    Returns
+    -------
+    list of float
+        Theoretical loss plateau predictions (one per non-zero power
+        component, in descending-power order).  The first element is the
+        initial MSE loss (before any learning).
+    """
+    template = np.asarray(template).ravel()
+    p = group.order
+    power = group.power_spectrum(template) / p
+
+    nonzero_mask = power > 1e-20
+    power = power[nonzero_mask]
+    power = np.sort(power)[::-1]
+
+    coef = 1 / p
+    return [coef * np.sum(power[k:]) for k in range(len(power))]
+
+
+def powers_per_neuron_rows(W: np.ndarray, group) -> np.ndarray:
+    """Irrep power spectrum for each row of ``W`` using ``group.power_spectrum``.
+
+    Each row is treated as a real signal on ``group`` (length ``group.order``).
+
+    Replaces the former ``powers_per_neuron_rows_cyclic`` which used
+    ``np.fft.rfft`` / ``np.fft.rfft2``.  The absolute scale differs by a
+    factor of ``|G|`` (group convention vs normalized FFT), but all
+    downstream consumers (dominant-mode fraction plots) use *ratios*, so
+    this is transparent.
+
+    Parameters
+    ----------
+    W : ndarray, shape (hidden_dim, group.order)
+    group : Group
+        Must match the group structure of the weight rows.
+
+    Returns
+    -------
+    ndarray, shape (hidden_dim, len(group.irreps()))
+        ``out[h, i]`` is the irrep power at index ``i`` for hidden unit ``h``.
+    """
+    if W.ndim != 2:
+        raise ValueError(f"W must be 2-D, got shape {W.shape}")
+    if W.shape[1] != group.order:
+        raise ValueError(f"W.shape[1] ({W.shape[1]}) must equal group.order ({group.order})")
+    hidden = W.shape[0]
+    n_irreps = len(group.irreps())
+    out = np.empty((hidden, n_irreps))
+    for h in range(hidden):
+        out[h] = group.power_spectrum(W[h])
+    return out
+
+
+def model_power_over_time(group, model, param_history, model_inputs):
+    """Compute the power spectrum of the model's learned outputs over time.
+
+    Replaces the former version that branched on ``group_name`` (``"cn"`` /
+    ``"cnxcn"`` / else).  Now uses ``group.power_spectrum`` uniformly.
+
+    Parameters
+    ----------
+    group : Group
+        The group object.
+    model : nn.Module
+        The trained model.
+    param_history : list of dict
+        State-dict snapshots at each saved training step.
+    model_inputs : torch.Tensor
+        Input data tensor (a small evaluation batch).
+
+    Returns
+    -------
+    powers_over_time : ndarray, shape (num_steps, n_irreps)
+        Average output power spectrum at each sampled step.
+    steps : ndarray of int
+        The param_history indices that were sampled.
+    """
+    n_irreps = len(group.irreps())
+
+    model.eval()
+    with torch.no_grad():
+        test_output = model(model_inputs[:1])
+    output_dim = test_output.shape[-1]
+
+    num_points = 200
+    max_step = len(param_history) - 1
+    num_inputs = max(1, len(model_inputs) // 50)
+    X_tensor = model_inputs[:num_inputs]
+
+    if max_step <= 1:
+        steps = np.arange(max_step + 1)
+    else:
+        steps = np.unique(np.logspace(1, np.log10(max_step), num_points, dtype=int))
+        steps = steps[steps > 50]
+        steps = np.hstack([np.linspace(1, min(50, max_step), 5).astype(int), steps])
+    steps = np.unique(steps)
+    steps = steps[steps <= max_step]
+
+    powers_over_time = np.zeros([len(steps), n_irreps])
+
+    for i_step, step in enumerate(steps):
+        model.load_state_dict(param_history[step])
+        model.eval()
+        with torch.no_grad():
+            outputs = model(X_tensor)
+            outputs_arr = outputs.detach().cpu().numpy().reshape(-1, output_dim)
+
+            if i_step % 10 == 0:
+                print("Computing power at step", step, "with output shape", outputs_arr.shape)
+
+            powers = []
+            for out in outputs_arr:
+                one_power = group.power_spectrum(out.flatten())
+                powers.append(one_power.flatten())
+            powers = np.array(powers)
+
+            average_power = np.mean(powers, axis=0)
+            powers_over_time[i_step, :] = average_power
+
+    powers_over_time = np.array(powers_over_time)
+    powers_over_time[powers_over_time < 1e-20] = 0
+
+    return powers_over_time, steps
+
+def topk_template_freqs(template_2d: np.ndarray, K: int, min_power: float = 1e-20):
+    """Return top-K (kx, ky) FFT2 bins by power for a 2D template.
+
+    Parameters
+    ----------
+    template_2d : np.ndarray, shape (p1, p2)
+        The 2D template array.
+    K : int
+        Number of top frequency bins to return.
+    min_power : float
+        Minimum power threshold for a bin to be considered.
+
+    Returns
+    -------
+    list of tuple
+        Top-K (kx, ky) frequency index pairs sorted by descending power.
+    """
+    F = np.fft.fft2(template_2d)
+    pwr = (F.conj() * F).real
+    shp = pwr.shape
+    flat = pwr.ravel()
+    mask = flat > min_power
+    if not np.any(mask):
+        return []
+    top_idx = np.flatnonzero(mask)[np.argsort(flat[mask])[::-1]][:K]
+    kx, ky = np.unravel_index(top_idx, shp)
+    return list(zip(kx.tolist(), ky.tolist()))
 
 
 def style_axes(ax, numyticks=5, numxticks=5, labelsize=24):
@@ -110,8 +283,7 @@ def _training_loss_log_y_floor(ax):
 
 
 def _theory_loss_y_levels_from_run(run_dir: Path, cfg: dict) -> list[float] | None:
-    """Template MSE plateau levels via ``power.loss_plateau_predictions``."""
-    import src.power as power
+    """Template MSE plateau levels via ``loss_plateau_predictions``."""
     from src.groups import make_group
 
     tpl_path = run_dir / "template.npy"
@@ -127,7 +299,7 @@ def _theory_loss_y_levels_from_run(run_dir: Path, cfg: dict) -> list[float] | No
         return None
 
     t = np.asarray(template_np).ravel()
-    out = power.loss_plateau_predictions(t, group)
+    out = loss_plateau_predictions(t, group)
     return list(out) if out else None
 
 
@@ -235,8 +407,6 @@ def analyze_wout_frequency_dominance(state_dict, tracked_freqs, p1, p2):
         dom_power: Power at dominant frequency for each neuron
         l2: L2 norm of each neuron's weights
     """
-    import src.power as power
-
     Wo = state_dict["W_out"].detach().cpu().numpy()  # (p, H)
     W = Wo.T  # (H, p)
     H, D = W.shape
@@ -251,7 +421,7 @@ def analyze_wout_frequency_dominance(state_dict, tracked_freqs, p1, p2):
         m = W[j].reshape(p1, p2)
         F = np.fft.fft2(m)
         P = (F.conj() * F).real
-        tp = [power._tracked_power_from_fft2(P, kx, ky, p1, p2) for (kx, ky) in tracked_freqs]
+        tp = [P[kx % p1, ky % p2] for (kx, ky) in tracked_freqs]
         jj = int(np.argmax(tp))
         dom_idx[j] = jj
         i0, j0 = tracked_freqs[jj][0] % p1, tracked_freqs[jj][1] % p2
@@ -259,11 +429,6 @@ def analyze_wout_frequency_dominance(state_dict, tracked_freqs, p1, p2):
         dom_pow[j] = tp[jj]
 
     return dom_idx, phase, dom_pow, l2
-
-
-# ---------------------------------------------------------------------------
-# Plotting functions
-# ---------------------------------------------------------------------------
 
 
 def plot_signal_2d(
@@ -298,8 +463,6 @@ def plot_train_loss_with_theory(
         Group object used for plateau prediction.
     x_values, x_label, save_path, show : optional
     """
-    import src.power as power
-
     fig, ax = plt.subplots(1, 1, figsize=(10, 6))
 
     if x_values is None:
@@ -307,7 +470,7 @@ def plot_train_loss_with_theory(
 
     ax.plot(x_values, loss_history, lw=4, color="#1f77b4", label="Training Loss")
 
-    for y in power.loss_plateau_predictions(template.ravel(), group):
+    for y in loss_plateau_predictions(template.ravel(), group):
         ax.axhline(y=y, color="black", linestyle="--", linewidth=2, zorder=-2)
 
     ax.set_xlabel(x_label, fontsize=24)
@@ -452,14 +615,12 @@ def compute_w_dominant_irrep_fraction_data(
 ) -> dict | None:
     """Compute per-neuron dominant-mode fraction curves.
 
-    Uses ``power.powers_per_neuron_rows(W, group)`` uniformly for all groups.
+    Uses ``powers_per_neuron_rows(W, group)`` uniformly for all groups.
     Replaces the former version that branched on ``group_name in ("cn","cnxcn")``.
 
     Returns a dict suitable for :func:`save_w_dominant_irrep_fraction_npz` and
     :func:`draw_w_dominant_irrep_fraction_ax`, or ``None`` if not applicable.
     """
-    import src.power as power
-
     if not param_hist or group is None:
         return None
 
@@ -485,7 +646,7 @@ def compute_w_dominant_irrep_fraction_data(
         W = _hidden_by_group_weights_from_state_dict(param_hist[step])
         if W is None or W.shape != (hidden_dim, group_size):
             return None
-        row_powers = power.powers_per_neuron_rows(W, group)
+        row_powers = powers_per_neuron_rows(W, group)
         W_power_over_time.append(row_powers)
 
     W_power_over_time = np.array(W_power_over_time)
@@ -765,156 +926,6 @@ def plot_w_dominant_irrep_fraction(
     return fig
 
 
-def plot_power_1d(
-    model,
-    param_history,
-    X_data,
-    Y_data,
-    template_1d,
-    group_size,
-    loss_history,
-    param_save_indices=None,
-    num_freqs_to_track=10,
-    checkpoint_indices=None,
-    num_samples=100,
-    save_path=None,
-    show=False,
-):
-    """Plot training loss with power spectrum analysis of predictions over time (1D).
-
-    Creates a two-panel plot:
-    - Top: Training loss with colored bands for theory lines
-    - Bottom: Power in tracked frequencies over time
-
-    Args:
-        model: The trained model
-        param_history: List of parameter snapshots
-        X_data: Input tensor (N, k, group_size)
-        Y_data: Target tensor (N, group_size)
-        template_1d: The 1D template array (group_size,)
-        group_size: Dimension of the group
-        loss_history: List of loss values
-        param_save_indices: List of step/epoch numbers where params were saved
-        num_freqs_to_track: Number of top frequencies to track
-        checkpoint_indices: (deprecated/unused)
-        num_samples: Number of samples to average for power computation
-        save_path: Path to save figure
-        show: Whether to display the plot
-    """
-    import torch
-    from matplotlib.ticker import FormatStrFormatter
-    from tqdm import tqdm
-
-    import src.power as power
-
-    device = next(model.parameters()).device
-
-    tracked_freqs = power.topk_template_freqs_1d(template_1d, K=num_freqs_to_track)
-    template_power, _ = power.get_power_1d(template_1d)
-    target_powers = {k: template_power[k] for k in tracked_freqs}
-
-    T = len(param_history)
-    steps_analysis = list(range(len(param_history)))
-
-    if param_save_indices is not None:
-        actual_steps = param_save_indices
-    else:
-        actual_steps = list(range(len(param_history)))
-
-    powers_over_time = {freq: [] for freq in tracked_freqs}
-
-    print(f"  Analyzing {len(steps_analysis)} checkpoints for power spectrum (1D)...")
-
-    with torch.no_grad():
-        for step in tqdm(steps_analysis, desc="  Computing power spectra", leave=False):
-            model.load_state_dict(param_history[step], strict=True)
-            model.eval()
-
-            outputs_flat = model(X_data[:num_samples].to(device)).detach().cpu().numpy()
-
-            powers_batch = []
-            for i in range(outputs_flat.shape[0]):
-                if outputs_flat.ndim == 3:
-                    out_1d = outputs_flat[i, -1, :]
-                else:
-                    out_1d = outputs_flat[i]
-                power_i, _ = power.get_power_1d(out_1d)
-                powers_batch.append(power_i)
-            avg_power = np.mean(powers_batch, axis=0)
-
-            for k in tracked_freqs:
-                powers_over_time[k].append(avg_power[k])
-
-    for freq in tracked_freqs:
-        powers_over_time[freq] = np.array(powers_over_time[freq])
-
-    if param_save_indices is None:
-        loss_epochs = np.arange(len(param_history))
-        loss_history_subset = loss_history
-    else:
-        loss_epochs = np.array(param_save_indices)
-        loss_history_subset = [loss_history[i] for i in param_save_indices]
-
-    colors = plt.cm.tab10(np.linspace(0, 1, len(tracked_freqs)))
-
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 10), sharex=True)
-    fig.subplots_adjust(left=0.12, right=0.98, top=0.96, bottom=0.10, hspace=0.12)
-
-    ax1.plot(loss_epochs, loss_history_subset, lw=4, color="#1f77b4", label="Training Loss")
-
-    from src.groups.cn import CyclicGroup
-
-    _cn_group = CyclicGroup(N=len(np.asarray(template_1d).ravel()))
-    y_levels = np.array(
-        power.loss_plateau_predictions(np.asarray(template_1d).ravel(), _cn_group),
-        dtype=float,
-    )
-
-    n_bands = max(0, min(len(tracked_freqs), len(y_levels) - 1)) if len(y_levels) else 0
-    for i in range(n_bands):
-        y_top = y_levels[i]
-        y_bot = y_levels[i + 1]
-        ax1.axhspan(y_bot, y_top, facecolor=colors[i], alpha=0.15, zorder=-3)
-
-    for y in y_levels[: n_bands + 1]:
-        ax1.axhline(y=y, color="black", linestyle="--", linewidth=2, zorder=-2)
-
-    ax1.set_ylabel("Theory Loss Levels", fontsize=20)
-    if len(y_levels):
-        ax1.set_ylim(y_levels[n_bands], y_levels[0] * 1.1)
-    style_axes(ax1)
-    ax1.grid(False)
-    ax1.tick_params(labelbottom=False)
-
-    for i, k in enumerate(tracked_freqs):
-        ax2.plot(actual_steps, powers_over_time[k], color=colors[i], lw=3, label=f"k={k}")
-        ax2.axhline(
-            target_powers[k],
-            color=colors[i],
-            linestyle="dotted",
-            linewidth=2,
-            alpha=0.5,
-        )
-
-    ax2.set_xlabel("Steps", fontsize=20)
-    ax2.set_ylabel("Power in Prediction", fontsize=20)
-    ax2.grid(True, alpha=0.3)
-    ax2.legend(fontsize=10, loc="best", ncol=2)
-    style_axes(ax2)
-    ax2.yaxis.set_major_formatter(FormatStrFormatter("%.1f"))
-
-    if save_path:
-        plt.savefig(save_path, bbox_inches="tight", dpi=150)
-        print(f"  ✓ Saved power spectrum plot to {save_path}")
-
-    if show:
-        plt.show()
-    else:
-        plt.close()
-
-    return fig, (ax1, ax2), powers_over_time, tracked_freqs
-
-
 def plot_wmix_structure(
     param_history,
     tracked_freqs,
@@ -1090,8 +1101,6 @@ def plot_power_group(
         save_path: Path to save the plot
         group_label: Human-readable label for the group
     """
-    import src.power as power
-
     irreps = group.irreps()
     n_irreps = len(irreps)
 
@@ -1099,7 +1108,7 @@ def plot_power_group(
 
     print(f"  Template power spectrum: {template_power}")
 
-    model_powers, steps = power.model_power_over_time(group, model, param_hist, X_eval)
+    model_powers, steps = model_power_over_time(group, model, param_hist, X_eval)
     epoch_numbers = [param_save_indices[min(s, len(param_save_indices) - 1)] for s in steps]
 
     fig, axes = plt.subplots(1, 3, figsize=(18, 5))
@@ -1220,84 +1229,6 @@ def plot_power_group(
     }
 
 
-def plot_loss_and_power(
-    x_values,
-    train_loss_hist,
-    x_label,
-    power_data,
-    save_path=None,
-    title=None,
-):
-    """Create combined 2-row plot: Log-Log loss (top) and Log-X power spectrum (bottom).
-
-    The two subplots share the x-axis (log-scale epochs/steps).
-
-    Args:
-        x_values: x-axis values for loss plot (epochs or steps)
-        train_loss_hist: training loss history
-        x_label: x-axis label (e.g., "Epoch")
-        power_data: dict returned by plot_power_group or plot_power_cn
-        save_path: path to save the figure
-        title: optional suptitle
-    """
-    fig, (ax_loss, ax_power) = plt.subplots(
-        2,
-        1,
-        figsize=(4, 8),
-        sharex=True,
-        gridspec_kw={"hspace": 0.10},
-    )
-
-    # --- Top row: Log-Log training loss ---
-    x_arr = np.asarray(x_values)
-    loss_arr = np.asarray(train_loss_hist)
-    pos_mask = x_arr > 0
-    ax_loss.plot(x_arr[pos_mask], loss_arr[pos_mask], lw=2, color="#1f77b4")
-    ax_loss.set_xscale("log")
-    ax_loss.set_yscale("log")
-    _training_loss_log_y_floor(ax_loss)
-    ax_loss.set_ylabel("Training Loss", fontsize=11)
-    ax_loss.grid(True, alpha=0.3)
-    ax_loss.tick_params(labelbottom=False)
-
-    # --- Bottom row: Log-X power spectrum with inline labels ---
-    valid_epochs = power_data["valid_epochs"]
-    valid_model_powers = power_data["valid_model_powers"]
-    template_power = power_data["template_power"]
-    top_indices = power_data["top_irrep_indices"]
-    colors_line = power_data["colors_line"]
-    labels = power_data["labels"]
-
-    lines_info = []
-    for i, idx in enumerate(top_indices):
-        pv = valid_model_powers[:, idx]
-        ax_power.plot(valid_epochs, pv, "-", lw=2, color=colors_line[i])
-        ax_power.axhline(template_power[idx], linestyle="--", alpha=0.5, color=colors_line[i])
-        lines_info.append(
-            {
-                "x": valid_epochs,
-                "y": pv,
-                "label": labels[i],
-                "color": colors_line[i],
-            }
-        )
-    _add_line_labels(ax_power, lines_info, fontsize=10)
-
-    ax_power.set_xscale("log")
-    ax_power.set_xlabel(x_label, fontsize=11)
-    ax_power.set_ylabel("Power", fontsize=11)
-    ax_power.grid(True, alpha=0.3)
-
-    if title:
-        fig.suptitle(title, fontsize=12, fontweight="bold")
-
-    plt.tight_layout()
-    if save_path:
-        plt.savefig(save_path, bbox_inches="tight", dpi=150)
-        print(f"  ✓ Saved {save_path}")
-    plt.close()
-
-
 def plot_loss_power_and_weight_power(
     x_values,
     train_loss_hist,
@@ -1309,7 +1240,7 @@ def plot_loss_power_and_weight_power(
 ):
     """Create a 3-row plot: training loss, output power, and W dominant-mode fraction (optional).
 
-    The first two rows match :func:`plot_loss_and_power`. The third row is drawn when
+    The first two rows show training loss and power spectrum. The third row is drawn when
     ``weight_kw`` includes ``param_hist`` and group fields (same as
     :func:`plot_w_dominant_irrep_fraction`).
 

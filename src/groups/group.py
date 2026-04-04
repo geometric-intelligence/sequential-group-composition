@@ -35,10 +35,6 @@ class Group(ABC):
             ``result[i]`` is the |G| x |G| permutation matrix for element *i*.
         """
 
-    # ------------------------------------------------------------------
-    # Concrete methods built on the abstract interface
-    # ------------------------------------------------------------------
-
     def fourier(self, signal: np.ndarray) -> list[np.ndarray]:
         """Group Fourier Transform.
 

@@ -17,7 +17,6 @@ from torch.utils.data import DataLoader
 import src.dataset as dataset
 import src.model as model
 import src.optimizer as optimizer
-import src.power as power
 import src.template as template
 import src.viz as viz
 from src.groups import make_group
@@ -536,7 +535,7 @@ def produce_plots(
     model_type = config["model"]["model_type"]
     if plot_wmix_bool and model_type == "QuadraticRNN" and isinstance(group, ProductCyclicGroup):
         print("Visualizing W_mix frequency structure...")
-        tracked_freqs = power.topk_template_freqs(
+        tracked_freqs = viz.topk_template_freqs(
             np.asarray(template).reshape(group._p1, group._p2), K=10
         )
         colors = plt.cm.tab10(np.linspace(0, 1, len(tracked_freqs)))
@@ -597,7 +596,6 @@ def train_single_run(config: dict, run_dir: Path = None) -> dict:
     device = config["device"] if torch.cuda.is_available() else "cpu"
     print(f"Using device: {device}")
 
-    ### ----- INSTANTIATE GROUP & GENERATE TEMPLATE ----- ###
     print("Generating data...")
 
     group_name = config["data"]["group_name"]
@@ -614,8 +612,6 @@ def train_single_run(config: dict, run_dir: Path = None) -> dict:
     elif template_type == "mnist" and group_name == "cnxcn":
         p1, p2 = config["data"]["p1"], config["data"]["p2"]
         tpl = template.mnist_2d(p1, p2, config["data"]["mnist_label"], root="data")
-    elif template_type == "gaussian":
-        tpl = template.gaussian_1d(config["data"]["p"], n_gaussians=3, seed=config["data"]["seed"])
     elif template_type == "onehot":
         tpl = template.one_hot(group_size)
     elif template_type == "custom_fourier":
@@ -649,7 +645,6 @@ def train_single_run(config: dict, run_dir: Path = None) -> dict:
         plt.close(fig)
         print("  \u2713 Saved template")
 
-    ### ----- SETUP TRAINING ----- ###
     print("Setting up model and training...")
 
     model_type = config["model"]["model_type"]
@@ -712,7 +707,6 @@ def train_single_run(config: dict, run_dir: Path = None) -> dict:
             f"Invalid optimizer: {optimizer_name}. Must be 'adam', 'hybrid', or 'per_neuron'"
         )
 
-    ### ----- CREATE DATA LOADERS ----- ###
     training_mode = config["training"]["mode"]
     tpl_flat = tpl.ravel()
 
@@ -783,7 +777,6 @@ def train_single_run(config: dict, run_dir: Path = None) -> dict:
     else:
         raise ValueError(f"Invalid training mode: {training_mode}. Must be 'online' or 'offline'")
 
-    ### ----- TRAIN MODEL ----- ###
     print(f"Starting training in {training_mode} mode...")
 
     # Get optional early stopping threshold
@@ -852,7 +845,6 @@ def train_single_run(config: dict, run_dir: Path = None) -> dict:
         status = "CONVERGED" if stopped_early else "DID NOT CONVERGE"
         print(f"  Status: {status} at step/epoch {final_step}")
 
-    ### ----- SAVE RESULTS ----- ###
     metadata = save_results(
         run_dir,
         config,
@@ -867,7 +859,6 @@ def train_single_run(config: dict, run_dir: Path = None) -> dict:
         save_param_snapshots=save_param_snapshots,
     )
 
-    ### ----- PRODUCE ALL PLOTS ----- ###
     produce_plots(
         run_dir=run_dir,
         config=config,
@@ -1048,7 +1039,6 @@ def make_combined_plot(groups=None):
     if groups is None:
         groups = list(GROUP_CONFIG_MAP.keys())
 
-    # --- Planning pass: classify each group ---
     RUNS_DATA = Path("runs_data")
     REGEN_SECONDS = 120
     PLOT_SECONDS = 10
@@ -1086,7 +1076,6 @@ def make_combined_plot(groups=None):
             {"group": g, "action": "train", "run_dir": None, "est_sec": est + REGEN_SECONDS}
         )
 
-    # --- Print plan ---
     total_est = sum(p["est_sec"] for p in plan) + PLOT_SECONDS
     print("\n" + "=" * 60)
     print("COMBINED PLOT PLAN")
@@ -1111,7 +1100,6 @@ def make_combined_plot(groups=None):
     print(f"\nEstimated total time: {time_str}")
     print("=" * 60)
 
-    # --- Execution pass ---
     run_dirs = []
     group_labels = []
     for p in plan:

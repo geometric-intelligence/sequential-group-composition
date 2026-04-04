@@ -62,10 +62,6 @@ class ProductCyclicGroup(Group):
                 reg[g, i, h] = 1.0
         return reg
 
-    # ------------------------------------------------------------------
-    # Fast FFT overrides
-    # ------------------------------------------------------------------
-
     def fourier_2d(self, signal_2d: np.ndarray) -> np.ndarray:
         """2D DFT-based Fourier transform returning the full spectrum array."""
         return np.fft.fft2(signal_2d)
