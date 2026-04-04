@@ -1099,9 +1099,7 @@ def plot_power_group(
 
     print(f"  Template power spectrum: {template_power}")
 
-    model_powers, steps = power.model_power_over_time(
-        group, model, param_hist, X_eval
-    )
+    model_powers, steps = power.model_power_over_time(group, model, param_hist, X_eval)
     epoch_numbers = [param_save_indices[min(s, len(param_save_indices) - 1)] for s in steps]
 
     fig, axes = plt.subplots(1, 3, figsize=(18, 5))

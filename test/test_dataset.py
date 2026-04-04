@@ -5,9 +5,9 @@ import pytest
 import torch
 
 import src.dataset as dataset
+from src.groups import DihedralGroup
 from src.groups.cn import CyclicGroup
 from src.groups.cnxcn import ProductCyclicGroup
-from src.groups import DihedralGroup
 
 
 class TestGroupCompositionDatasetOfflineCn:

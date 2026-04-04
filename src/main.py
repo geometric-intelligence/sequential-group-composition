@@ -359,7 +359,7 @@ def produce_plots(
     plot_w_dominant_irrep_fraction_bool = plots_bool_dict.get("w_dominant_irrep_fraction", True)
 
     # X-axis values
-    total_space_size = group_size ** k
+    total_space_size = group_size**k
     if training_mode == "online":
         steps = np.arange(len(train_loss_hist))
         samples_seen = batch_size * steps
@@ -478,7 +478,7 @@ def produce_plots(
             save_path=os.path.join(run_dir, "predictions_over_time.pdf"),
             group_label=group_label,
         )
-        print(f"  \u2713 Saved predictions_over_time.pdf")
+        print("  \u2713 Saved predictions_over_time.pdf")
 
     # Power spectrum
     power_data = None
@@ -501,7 +501,7 @@ def produce_plots(
             learning_rate=config["training"]["learning_rate"],
             hidden_dim=config["model"]["hidden_dim"],
         )
-        print(f"  \u2713 Saved power_spectrum_analysis.pdf")
+        print("  \u2713 Saved power_spectrum_analysis.pdf")
         np.savez(run_dir / "power_data.npz", **power_data)
 
     # Combined loss + power + weight power
@@ -569,9 +569,7 @@ def produce_plots(
                 f"  (skipped w_dominant_irrep_fraction: need W or W_out with second dim {group_size})"
             )
 
-    viz.maybe_save_w_dominant_irrep_fraction_npz(
-        run_dir, param_hist, param_save_indices, group
-    )
+    viz.maybe_save_w_dominant_irrep_fraction_npz(run_dir, param_hist, param_save_indices, group)
     print(f"\n\u2713 All {group_label} plots generated successfully!")
 
 
@@ -617,9 +615,7 @@ def train_single_run(config: dict, run_dir: Path = None) -> dict:
         p1, p2 = config["data"]["p1"], config["data"]["p2"]
         tpl = template.mnist_2d(p1, p2, config["data"]["mnist_label"], root="data")
     elif template_type == "gaussian":
-        tpl = template.gaussian_1d(
-            config["data"]["p"], n_gaussians=3, seed=config["data"]["seed"]
-        )
+        tpl = template.gaussian_1d(config["data"]["p"], n_gaussians=3, seed=config["data"]["seed"])
     elif template_type == "onehot":
         tpl = template.one_hot(group_size)
     elif template_type == "custom_fourier":

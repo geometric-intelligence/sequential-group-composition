@@ -15,14 +15,16 @@ Run with: pytest test/test_refactor_equivalence.py -v
 
 import numpy as np
 import pytest
-import torch
-
-from src.groups.cn import CyclicGroup
-from src.groups.cnxcn import ProductCyclicGroup
 
 # ── dataset.py ────────────────────────────────────────────────────────────
-
 from src.dataset import GroupCompositionDataset
+from src.groups.cn import CyclicGroup
+from src.groups.cnxcn import ProductCyclicGroup
+from src.power import (
+    loss_plateau_predictions,
+    powers_per_neuron_rows,
+)
+from src.template import fixed_group
 
 
 class TestDatasetGroupPath:
@@ -62,11 +64,6 @@ class TestDatasetGroupPath:
 
 # ── power.py normalization ───────────────────────────────────────────────
 
-from src.power import (
-    loss_plateau_predictions,
-    powers_per_neuron_rows,
-)
-
 
 class TestPowerNormalization:
     """Document the |G| normalization difference between cyclic FFT and group power spectrum."""
@@ -81,7 +78,7 @@ class TestPowerNormalization:
         group_power = group.power_spectrum(template)
         group_total = group_power.sum()
 
-        norm_sq = np.sum(template ** 2)
+        norm_sq = np.sum(template**2)
         expected_total = n * norm_sq  # Parseval: sum |F[k]|^2 = N * ||x||^2
         assert np.isclose(group_total, expected_total, rtol=1e-4)
 
@@ -95,7 +92,7 @@ class TestPowerNormalization:
         group_power = group.power_spectrum(template)
         group_total = group_power.sum()
 
-        norm_sq = np.sum(template ** 2)
+        norm_sq = np.sum(template**2)
         expected_total = (p1 * p2) * norm_sq
         assert np.isclose(group_total, expected_total, rtol=1e-4)
 
@@ -113,7 +110,7 @@ class TestPowerNormalization:
         assert all(levels[i] >= levels[i + 1] for i in range(len(levels) - 1))
 
         # First level should approximate MSE of zero-prediction baseline
-        norm_sq = np.sum(template ** 2)
+        norm_sq = np.sum(template**2)
         expected_initial = norm_sq / n
         assert np.isclose(levels[0], expected_initial, rtol=1e-3), (
             f"Initial plateau {levels[0]:.6f} vs expected {expected_initial:.6f}"
@@ -137,8 +134,6 @@ class TestPowerNormalization:
 
 
 # ── template.py ──────────────────────────────────────────────────────────
-
-from src.template import fixed_group
 
 
 class TestTemplateFixedGroup:

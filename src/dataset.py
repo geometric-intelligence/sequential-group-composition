@@ -43,13 +43,9 @@ class GroupCompositionDataset(Dataset):
     def __new__(cls, group, *, online=False, **kwargs):
         if online:
             if isinstance(group, CyclicGroup):
-                return _OnlineModularAdditionDataset1D(
-                    group_size=group.order, **kwargs
-                )
+                return _OnlineModularAdditionDataset1D(group_size=group.order, **kwargs)
             if isinstance(group, ProductCyclicGroup):
-                return _OnlineModularAdditionDataset2D(
-                    p1=group._p1, p2=group._p2, **kwargs
-                )
+                return _OnlineModularAdditionDataset2D(p1=group._p1, p2=group._p2, **kwargs)
             raise ValueError(
                 f"Online mode only supported for CyclicGroup and ProductCyclicGroup, "
                 f"got {type(group).__name__}"
