@@ -181,4 +181,4 @@ class TestPowerSpectrum:
         for i, irrep in enumerate(escnn_irreps):
             fc = escnn_coefs[i]
             escnn_ps[i] = irrep.size * np.trace(fc.conj().T @ fc)
-        np.testing.assert_allclose(our_ps, escnn_ps, atol=1e-10)
+        np.testing.assert_allclose(our_ps, escnn_ps / ours.order, atol=1e-10)

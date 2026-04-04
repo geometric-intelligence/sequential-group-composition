@@ -6,21 +6,49 @@ import numpy as np
 import torch
 from matplotlib.ticker import MaxNLocator
 
+from src.groups.cn import CyclicGroup
+from src.groups.cnxcn import ProductCyclicGroup
+
+
+def _independent_irrep_indices(group):
+    """Return irrep indices that are not conjugate duplicates.
+
+    For ``CyclicGroup(N)`` the independent modes are ``0, 1, …, N//2``
+    (the rest satisfy ``power[k] = power[N-k]``).
+
+    For ``ProductCyclicGroup(p1, p2)`` one representative is kept from
+    each ``{(j1, j2), ((-j1)%p1, (-j2)%p2)}`` pair (the one with the
+    smaller row-major index).
+
+    For all other groups every irrep is independent and all indices are
+    returned.
+    """
+    if isinstance(group, CyclicGroup):
+        N = group.order
+        return list(range(N // 2 + 1))
+
+    if isinstance(group, ProductCyclicGroup):
+        p1, p2 = group._p1, group._p2
+        seen = set()
+        result = []
+        for j1 in range(p1):
+            for j2 in range(p2):
+                idx = j1 * p2 + j2
+                conj_idx = ((-j1) % p1) * p2 + ((-j2) % p2)
+                if conj_idx not in seen:
+                    seen.add(idx)
+                    result.append(idx)
+        return result
+
+    return list(range(len(group.irreps())))
+
 
 def loss_plateau_predictions(template, group):
     """Compute theoretical MSE loss plateau predictions for a group template.
 
-    Uses ``group.power_spectrum`` to obtain per-irrep power, normalizes by
-    ``|G|`` (so that the total matches ``||template||^2``, i.e. the Parseval
-    convention used by ``nn.MSELoss``), then returns cumulative sums in
-    descending power order.
-
-    Replaces the former ``loss_plateau_predictions_cyclic`` (which used
-    ``np.fft.rfft`` / ``np.fft.rfft2`` with built-in ``1/N`` normalization)
-    and ``loss_plateau_predictions_group``.  Equivalence verified in
-    ``test/test_refactor_equivalence.py``: the ``1/|G|`` normalization of
-    ``group.power_spectrum`` is the only difference; after correction the
-    plateaus match the legacy cyclic code to machine precision.
+    Uses ``group.power_spectrum`` (which already normalises by ``|G|``) to
+    obtain per-irrep power, then returns cumulative sums in descending power
+    order scaled by ``1/|G|`` (the MSE averaging factor).
 
     Parameters
     ----------
@@ -39,7 +67,7 @@ def loss_plateau_predictions(template, group):
     """
     template = np.asarray(template).ravel()
     p = group.order
-    power = group.power_spectrum(template) / p
+    power = group.power_spectrum(template)
 
     nonzero_mask = power > 1e-20
     power = power[nonzero_mask]
@@ -1108,13 +1136,22 @@ def plot_power_group(
 
     print(f"  Template power spectrum: {template_power}")
 
+    indep = _independent_irrep_indices(group)
+    if len(indep) < n_irreps:
+        print(
+            f"  Showing {len(indep)}/{n_irreps} independent irreps "
+            f"(conjugate pairs share power for real templates)"
+        )
+
     model_powers, steps = model_power_over_time(group, model, param_hist, X_eval)
     epoch_numbers = [param_save_indices[min(s, len(param_save_indices) - 1)] for s in steps]
 
     fig, axes = plt.subplots(1, 3, figsize=(18, 5))
 
-    top_k = min(5, n_irreps)
-    top_irrep_indices = np.argsort(template_power)[::-1][:top_k]
+    top_k = min(5, len(indep))
+    indep_powers = np.array([template_power[i] for i in indep])
+    ranked = np.argsort(indep_powers)[::-1]
+    top_irrep_indices = np.array([indep[r] for r in ranked[:top_k]])
     top_irrep_indices = top_irrep_indices[top_irrep_indices != 0]
 
     _group_power_colors = ["#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b"]

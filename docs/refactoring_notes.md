@@ -14,13 +14,13 @@ object.
 
 | Removed            | Replacement                  |
 | ------------------ | ---------------------------- |
-| `fixed_cn`         | `fixed_group(group, powers)` |
-| `fixed_cnxcn`      | `fixed_group(group, powers)` |
+| `fixed_cn`         | `custom_fourier(group, powers)` |
+| `fixed_cnxcn`      | `custom_fourier(group, powers)` |
 
 **Behavioral difference**: `fixed_cn` accepted `(n+1)//2` powers (one per
 real-FFT frequency bin with Hermitian folding); `fixed_cnxcn` accepted an
 arbitrary number of 2D mode powers with a `mode_selector` layout.
-`fixed_group` accepts exactly `len(group.irreps())` powers (one per irrep).
+`custom_fourier` accepts exactly `len(group.irreps())` powers (one per irrep).
 For `CyclicGroup(N)` that is `N` values; for `ProductCyclicGroup(p1, p2)`
 that is `p1 * p2` values. Config files that used the old `powers` lists
 must be updated to provide one power per irrep.
@@ -139,6 +139,6 @@ checks.
    cyclic plateaus.
 4. `powers_per_neuron_rows` total power matches the cyclic version after
    normalization.
-5. `fixed_group` produces valid templates for all group types.
+5. `custom_fourier` produces valid templates for all group types.
 
 All 117 tests pass after the refactoring.

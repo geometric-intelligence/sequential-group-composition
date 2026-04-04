@@ -54,7 +54,7 @@ class CyclicGroup(Group):
         Returns one power value per frequency bin (same count as irreps = N).
         """
         ft = np.fft.fft(signal)
-        return np.abs(ft) ** 2
+        return np.abs(ft) ** 2 / self._N
 
     def _build_irreps(self) -> list[IrreducibleRepresentation]:
         N = self._N

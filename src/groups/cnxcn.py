@@ -96,4 +96,4 @@ class ProductCyclicGroup(Group):
         """Flat-signal power spectrum (one value per irrep)."""
         signal_2d = signal.reshape(self._p1, self._p2)
         ft = np.fft.fft2(signal_2d)
-        return (np.abs(ft) ** 2).ravel()
+        return (np.abs(ft) ** 2 / self._order).ravel()

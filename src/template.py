@@ -11,7 +11,7 @@ def one_hot(group_size):
     return vec
 
 
-def fixed_group(group, powers):
+def custom_fourier(group, powers):
     """Generate a template for a group from desired per-irrep power values.
 
     Each entry in *powers* specifies the desired spectral power for the
@@ -60,11 +60,11 @@ def fixed_group(group, powers):
 def make_template(config):
     """Create a template based on configuration.
 
-    For ``custom_fourier`` templates, uses :func:`fixed_group` with the
+    For ``custom_fourier`` templates, uses :func:`custom_fourier` with the
     ``Group`` object stored in ``config["group"]``.
     """
     if config["template_type"] == "custom_fourier":
-        template = fixed_group(config["group"], config["powers"])
+        template = custom_fourier(config["group"], config["powers"])
     elif config["template_type"] == "one_hot":
         template = one_hot(config["group_size"])
     else:

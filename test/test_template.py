@@ -37,7 +37,7 @@ class TestOneHot:
 
 
 class TestFixedGroupCn:
-    """Tests for template.fixed_group with CyclicGroup."""
+    """Tests for template.custom_fourier with CyclicGroup."""
 
     def test_output_shape(self):
         """Test that output shape is correct."""
@@ -45,7 +45,7 @@ class TestFixedGroupCn:
         n_irreps = len(group.irreps())
         powers = [0.0] + [50.0] * (n_irreps - 1)
 
-        tpl = template.fixed_group(group, powers)
+        tpl = template.custom_fourier(group, powers)
 
         assert tpl.shape == (8,), f"Expected shape (8,), got {tpl.shape}"
 
@@ -55,7 +55,7 @@ class TestFixedGroupCn:
         n_irreps = len(group.irreps())
         powers = [0.0] + [5.0] * (n_irreps - 1)
 
-        tpl = template.fixed_group(group, powers)
+        tpl = template.custom_fourier(group, powers)
 
         np.testing.assert_allclose(tpl.mean(), 0, atol=1e-6)
 
@@ -65,13 +65,13 @@ class TestFixedGroupCn:
         n_irreps = len(group.irreps())
         powers = [0.0] + [50.0] * (n_irreps - 1)
 
-        tpl = template.fixed_group(group, powers)
+        tpl = template.custom_fourier(group, powers)
 
         assert np.isreal(tpl).all()
 
 
 class TestFixedGroupCnxcn:
-    """Tests for template.fixed_group with ProductCyclicGroup."""
+    """Tests for template.custom_fourier with ProductCyclicGroup."""
 
     def test_output_shape(self):
         """Test that output shape is correct (flattened)."""
@@ -79,7 +79,7 @@ class TestFixedGroupCnxcn:
         n_irreps = len(group.irreps())
         powers = [0.0] + [50.0] * (n_irreps - 1)
 
-        tpl = template.fixed_group(group, powers)
+        tpl = template.custom_fourier(group, powers)
 
         expected_size = 6 * 6
         assert tpl.shape == (expected_size,), f"Expected shape ({expected_size},), got {tpl.shape}"
@@ -90,7 +90,7 @@ class TestFixedGroupCnxcn:
         n_irreps = len(group.irreps())
         powers = [0.0] + [50.0] * (n_irreps - 1)
 
-        tpl = template.fixed_group(group, powers)
+        tpl = template.custom_fourier(group, powers)
 
         np.testing.assert_allclose(tpl.mean(), 0, atol=1e-6)
 
@@ -100,13 +100,13 @@ class TestFixedGroupCnxcn:
         n_irreps = len(group.irreps())
         powers = [0.0] + [50.0] * (n_irreps - 1)
 
-        tpl = template.fixed_group(group, powers)
+        tpl = template.custom_fourier(group, powers)
 
         assert np.isreal(tpl).all()
 
 
 class TestFixedGroup:
-    """Tests for template.fixed_group function."""
+    """Tests for template.custom_fourier function."""
 
     @pytest.fixture
     def dihedral_group(self):
@@ -121,7 +121,7 @@ class TestFixedGroup:
         num_irreps = len(list(dihedral_group.irreps()))
         powers = [1.0] * num_irreps
 
-        tpl = template.fixed_group(dihedral_group, powers)
+        tpl = template.custom_fourier(dihedral_group, powers)
 
         assert tpl.shape == (group_order,), f"Expected shape ({group_order},), got {tpl.shape}"
 
@@ -130,7 +130,7 @@ class TestFixedGroup:
         num_irreps = len(list(dihedral_group.irreps()))
         powers = [1.0] * num_irreps
 
-        tpl = template.fixed_group(dihedral_group, powers)
+        tpl = template.custom_fourier(dihedral_group, powers)
 
         np.testing.assert_allclose(tpl.mean(), 0, atol=1e-6)
 
@@ -139,13 +139,13 @@ class TestFixedGroup:
         wrong_num_powers = [1.0, 2.0]
 
         with pytest.raises(AssertionError):
-            template.fixed_group(dihedral_group, wrong_num_powers)
+            template.custom_fourier(dihedral_group, wrong_num_powers)
 
     def test_real_valued(self, dihedral_group):
         """Test that the template is real-valued."""
         num_irreps = len(list(dihedral_group.irreps()))
         powers = [1.0] * num_irreps
 
-        tpl = template.fixed_group(dihedral_group, powers)
+        tpl = template.custom_fourier(dihedral_group, powers)
 
         assert np.isreal(tpl).all()

@@ -92,21 +92,21 @@ class TestGroupPowerSpectrum:
     """Tests for group.power_spectrum via Group objects."""
 
     def test_group_power_spectrum(self):
-        """Test that group.power_spectrum computes correct power from a template.
+        """Test that group.power_spectrum returns the config powers exactly.
 
-        power_spectrum returns dim(rho) * Tr(hat_x^H @ hat_x) without dividing
-        by |G|, so the expected values are the input powers scaled by group.order.
+        power_spectrum normalises by |G|, so for a template built with
+        ``custom_fourier(group, powers)`` the returned spectrum must match
+        ``powers`` directly.
         """
         group = OctahedralGroup()
         powers = [0.0, 20.0, 20.0, 100.0, 0.0]
-        tpl = template.fixed_group(group, powers=powers)
+        tpl = template.custom_fourier(group, powers=powers)
 
         spectrum = group.power_spectrum(tpl)
 
-        expected = [p * group.order for p in powers]
         np.testing.assert_allclose(
             spectrum,
-            expected,
+            powers,
             atol=1e-4,
-            err_msg=f"Power spectrum mismatch: {spectrum} vs {expected}",
+            err_msg=f"Power spectrum mismatch: {spectrum} vs {powers}",
         )

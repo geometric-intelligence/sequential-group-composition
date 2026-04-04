@@ -615,7 +615,7 @@ def train_single_run(config: dict, run_dir: Path = None) -> dict:
     elif template_type == "onehot":
         tpl = template.one_hot(group_size)
     elif template_type == "custom_fourier":
-        tpl = template.fixed_group(group, config["data"]["powers"])
+        tpl = template.custom_fourier(group, config["data"]["powers"])
         print(f"Template type: custom_fourier, powers={config['data']['powers']}")
     else:
         raise ValueError(f"Unknown template_type: {template_type}")
