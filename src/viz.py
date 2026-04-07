@@ -803,6 +803,9 @@ def draw_w_dominant_irrep_fraction_ax(
     grid_alpha: float = 0.3,
     show_ylabel: bool = True,
     mode_colors: list | None = None,
+    aggregate_by_dominant_mode: bool = False,
+    aggregate_lw: float | None = None,
+    aggregate_std_fill_alpha: float = 0.22,
 ):
     """Draw dominant-fraction curves on *ax* (shared helpers for standalone and combined figures).
 
@@ -810,6 +813,10 @@ def draw_w_dominant_irrep_fraction_ax(
     Set ``show_ylabel`` to False for non-leading columns in multi-column layouts.
     Pass ``mode_colors`` (length ``n_modes``) to match line colors in the power panel, e.g. from
     :func:`mode_colors_aligned_with_power_plot`.
+
+    When ``aggregate_by_dominant_mode`` is True, instead of one faint line per neuron, plot one
+    curve per mode/irrep color: mean fraction over neurons whose **final** dominant mode is that
+    index, with a light ``mean ± std`` band behind a thicker mean line.
     """
     n_modes = int(data["n_modes"])
     if mode_colors is not None and len(mode_colors) == n_modes:
@@ -822,17 +829,51 @@ def draw_w_dominant_irrep_fraction_ax(
     ylabel = data["ylabel"]
     hidden_dim = frac.shape[1]
 
-    for h in range(hidden_dim):
-        if not np.any(np.isfinite(frac[:, h])):
-            continue
-        k = int(dom_idx[h])
-        ax.plot(
-            x_plot,
-            frac[:, h],
-            color=colors[k],
-            lw=lw,
-            alpha=alpha,
-        )
+    if aggregate_by_dominant_mode:
+        thick = float(aggregate_lw) if aggregate_lw is not None else max(2.8, lw + 1.2)
+        for k in range(n_modes):
+            cols = [
+                h
+                for h in range(hidden_dim)
+                if int(dom_idx[h]) == k and np.any(np.isfinite(frac[:, h]))
+            ]
+            if not cols:
+                continue
+            block = frac[:, cols]
+            mean_v = np.nanmean(block, axis=1)
+            std_v = np.nanstd(block, axis=1)
+            low = mean_v - std_v
+            high = mean_v + std_v
+            c = colors[k]
+            ax.fill_between(
+                x_plot,
+                low,
+                high,
+                color=c,
+                alpha=aggregate_std_fill_alpha,
+                linewidth=0,
+                zorder=1,
+            )
+            ax.plot(
+                x_plot,
+                mean_v,
+                color=c,
+                lw=thick,
+                solid_capstyle="round",
+                zorder=2,
+            )
+    else:
+        for h in range(hidden_dim):
+            if not np.any(np.isfinite(frac[:, h])):
+                continue
+            k = int(dom_idx[h])
+            ax.plot(
+                x_plot,
+                frac[:, h],
+                color=colors[k],
+                lw=lw,
+                alpha=alpha,
+            )
 
     ax.set_xscale("log")
     ax.set_ylim(0, 1.02)
@@ -1397,6 +1438,7 @@ def plot_combined_loss_and_power(
     run_dirs,
     group_labels,
     save_path=None,
+    w_dominant_aggregate_by_mode: bool = False,
 ):
     """Create a 3-row x N-column combined figure from multiple run directories.
 
@@ -1409,6 +1451,9 @@ def plot_combined_loss_and_power(
     the left column only. Row 3 **y** (0–1)
     is shared across columns only. Mode/irrep line colors in row 3 match row 2 (see
     :func:`mode_colors_aligned_with_power_plot`).
+
+    If ``w_dominant_aggregate_by_mode`` is True, row 3 draws one mean ± std band per mode color
+    (see :func:`draw_w_dominant_irrep_fraction_ax`) instead of one semi-transparent line per neuron.
 
     Each run directory must contain ``train_loss_history.npy``, ``power_data.npz``,
     ``config.yaml``, and ``template.npy`` (for theory lines). For the third row, prefer
@@ -1531,6 +1576,7 @@ def plot_combined_loss_and_power(
                 grid_alpha=0.3,
                 show_ylabel=(col == 0),
                 mode_colors=mode_colors,
+                aggregate_by_dominant_mode=w_dominant_aggregate_by_mode,
             )
         else:
             ax.text(

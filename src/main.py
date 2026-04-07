@@ -1020,7 +1020,7 @@ def _estimate_training_time(group_key, target_epochs, runs_root="runs"):
     return None
 
 
-def make_combined_plot(groups=None):
+def make_combined_plot(groups=None, w_dominant_aggregate_by_mode: bool = False):
     """Orchestrate: find or produce runs for each group, then combine.
 
     Writes ``combined_loss_and_power.pdf`` (three rows per group: loss, power,
@@ -1128,6 +1128,7 @@ def make_combined_plot(groups=None):
         run_dirs=run_dirs,
         group_labels=group_labels,
         save_path=save_path,
+        w_dominant_aggregate_by_mode=w_dominant_aggregate_by_mode,
     )
     print(f"\nDone. Output: {save_path}")
     return save_path
@@ -1155,13 +1156,20 @@ if __name__ == "__main__":
         action="store_true",
         help="Produce combined_loss_and_power.pdf (3 rows x N groups: loss, power, W dominant fraction)",
     )
+    parser.add_argument(
+        "--combined-w-mean-per-mode",
+        action="store_true",
+        help=(
+            "With --combined-plot: bottom row shows mean ± std per mode color instead of one line per neuron"
+        ),
+    )
 
     args = parser.parse_args()
 
     if args.regenerate:
         regenerate_plots(args.regenerate, device=_auto_device())
     elif args.combined_plot:
-        make_combined_plot()
+        make_combined_plot(w_dominant_aggregate_by_mode=args.combined_w_mean_per_mode)
     else:
         config = load_config(args.config)
         main(config)
