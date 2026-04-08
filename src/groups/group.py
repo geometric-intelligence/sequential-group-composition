@@ -77,7 +77,7 @@ class Group(ABC):
                 irrep.size * np.trace(irrep(g) @ fourier_coefs[i]) for i, irrep in enumerate(irreps)
             )
 
-        return np.array([_at_element(g) for g in range(n)])
+        return np.real(np.array([_at_element(g) for g in range(n)]))
 
     def power_spectrum(self, signal: np.ndarray) -> np.ndarray:
         """Group power spectrum (normalised by ``|G|``).
@@ -104,5 +104,5 @@ class Group(ABC):
         ps = np.zeros(len(irreps))
         for i, irrep in enumerate(irreps):
             fc = fourier_coefs[i]
-            ps[i] = irrep.size * np.trace(fc.conj().T @ fc) / self.order
+            ps[i] = np.real(irrep.size * np.trace(fc.conj().T @ fc)) / self.order
         return ps

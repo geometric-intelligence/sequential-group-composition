@@ -7,6 +7,7 @@ from src.groups.dn import DihedralGroup
 from src.groups.group import Group
 from src.groups.irrep import IrreducibleRepresentation
 from src.groups.oh import OctahedralGroup
+from src.groups.znxznxc4 import ZnxZnxC4Group
 
 __all__ = [
     "Group",
@@ -16,6 +17,7 @@ __all__ = [
     "DihedralGroup",
     "OctahedralGroup",
     "IcosahedralGroup",
+    "ZnxZnC4Group",
     "make_group",
 ]
 
@@ -48,7 +50,9 @@ def make_group(group_name: str, config: dict) -> Group:
         return OctahedralGroup()
     if group_name == "A5":
         return IcosahedralGroup()
+    if group_name == "znxzn_c4":
+        return ZnxZnC4Group(n=data["p"])
     raise ValueError(
         f"Unknown group_name '{group_name}'. "
-        "Must be one of: 'cn', 'cnxcn', 'dihedral', 'octahedral', 'A5'."
+        "Must be one of: 'cn', 'cnxcn', 'dihedral', 'octahedral', 'A5', 'znxzn_c4'."
     )
