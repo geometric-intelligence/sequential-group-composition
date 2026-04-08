@@ -17,7 +17,7 @@ __all__ = [
     "DihedralGroup",
     "OctahedralGroup",
     "IcosahedralGroup",
-    "ZnxZnC4Group",
+    "ZnxZnxC4Group",
     "make_group",
 ]
 
@@ -51,7 +51,7 @@ def make_group(group_name: str, config: dict) -> Group:
     if group_name == "A5":
         return IcosahedralGroup()
     if group_name == "znxzn_c4":
-        return ZnxZnC4Group(n=data["p"])
+        return ZnxZnxC4Group(n=data["p"])
     raise ValueError(
         f"Unknown group_name '{group_name}'. "
         "Must be one of: 'cn', 'cnxcn', 'dihedral', 'octahedral', 'A5', 'znxzn_c4'."
