@@ -7,7 +7,7 @@ from src.groups.dn import DihedralGroup
 from src.groups.group import Group
 from src.groups.irrep import IrreducibleRepresentation
 from src.groups.oh import OctahedralGroup
-from src.groups.znxznxc4 import ZnxZnxC4Group
+from src.groups.znxzn_cm import ZnxZnxCmGroup
 
 __all__ = [
     "Group",
@@ -17,7 +17,7 @@ __all__ = [
     "DihedralGroup",
     "OctahedralGroup",
     "IcosahedralGroup",
-    "ZnxZnxC4Group",
+    "ZnxZnxCmGroup",
     "make_group",
 ]
 
@@ -28,10 +28,11 @@ def make_group(group_name: str, config: dict) -> Group:
     Parameters
     ----------
     group_name : str
-        One of ``'cn'``, ``'cnxcn'``, ``'dihedral'``, ``'octahedral'``, ``'A5'``.
+        One of ``'cn'``, ``'cnxcn'``, ``'dihedral'``, ``'octahedral'``,
+        ``'A5'``, ``'znxzn_cm'``.
     config : dict
         Experiment config; the ``config["data"]`` sub-dict supplies group
-        parameters (``p``, ``p1``/``p2``, ``group_n``, etc.).
+        parameters (``p``, ``p1``/``p2``, ``group_n``, ``m``, etc.).
 
     Returns
     -------
@@ -50,9 +51,10 @@ def make_group(group_name: str, config: dict) -> Group:
         return OctahedralGroup()
     if group_name == "A5":
         return IcosahedralGroup()
-    if group_name == "znxzn_c4":
-        return ZnxZnxC4Group(n=data["p"])
+    if group_name == "znxzn_cm":
+        return ZnxZnxCmGroup(n=data["p"], m=data["m"])
     raise ValueError(
         f"Unknown group_name '{group_name}'. "
-        "Must be one of: 'cn', 'cnxcn', 'dihedral', 'octahedral', 'A5', 'znxzn_c4'."
+        "Must be one of: 'cn', 'cnxcn', 'dihedral', 'octahedral', 'A5', "
+        "'znxzn_cm'."
     )

@@ -51,7 +51,12 @@ def custom_fourier(group, powers):
         spectrum.append(mat)
 
     template = group.inverse_fourier(spectrum)
-    template = template - np.mean(template)
+    if np.max(np.abs(template.imag)) > 1e-10:
+        raise ValueError(
+            "Fourier coefficients do not correspond to a real signal. "
+            "Ensure conjugate irreps receive equal powers."
+        )
+    template = template.real - np.mean(template.real)
     template = template.astype(np.float32)
 
     return template
