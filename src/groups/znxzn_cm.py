@@ -1,4 +1,4 @@
-"""Group Z_n² ⋊ C_m for m ∈ {1, 2, 3, 4, 6} (order mn²).
+"""DiscreteSE2Group: Z_n² ⋊ C_m for m ∈ {1, 2, 3, 4, 6} (order mn²).
 
 The semidirect product of the translation group Z_n × Z_n with the cyclic
 rotation group C_m, where the semidirect product is defined by the group homomorphism
@@ -41,7 +41,7 @@ _STANDARD_ACTIONS: dict[int, np.ndarray] = {
 _VALID_M = frozenset(_STANDARD_ACTIONS)
 
 
-class ZnxZnxCmGroup(Group):
+class DiscreteSE2Group(Group):
     """Z_n² ⋊ C_m: translations and rotations on a discrete lattice.
 
     Parameters
@@ -138,7 +138,7 @@ class ZnxZnxCmGroup(Group):
     # ------------------------------------------------------------------
 
     def _build_regular_rep(self) -> np.ndarray:
-        """Regular representation of Z_n² ⋊ C_m.
+        """Regular representation of DiscreteSE2Group (Z_n² ⋊ C_m).
 
         Permutation matrix for each group element.
         Shape: (n_elem, n_elem, n_elem)., one n_elem by n_elem permutation matrix for each group element."""
@@ -238,7 +238,7 @@ class ZnxZnxCmGroup(Group):
     # ------------------------------------------------------------------
 
     def _build_irreps(self) -> list[IrreducibleRepresentation]:
-        """Construct all irreps of Z_n² ⋊ C_m via Clifford-Mackey theory: orbits in dual group and induction from stabilizers.
+        """Construct all irreps of DiscreteSE2Group (Z_n² ⋊ C_m) via Clifford-Mackey theory: orbits in dual group and induction from stabilizers.
 
         For an orbit of size t (a divisor of m), the stabilizer is C_h with
         h = m / t.  Each of the h characters of C_h yields one irrep of

@@ -2,10 +2,21 @@
 # Configuration: Z_n^2 ⋊ C_4 with n=3
 # ============================================================================
 # G = Z_3^2 ⋊ C_4 has order 36 and 6 irreps with dimensions [1, 1, 1, 1, 4, 4].
+#
+# Irrep ordering (Mackey / Clifford induction):
+#   idx 0: 1D, orbit {(0,0)}, s=0  — trivial, self-conjugate
+#   idx 1: 1D, orbit {(0,0)}, s=1  ─┐ conjugate pair (s ↔ 4-s)
+#   idx 2: 1D, orbit {(0,0)}, s=2  — self-conjugate
+#   idx 3: 1D, orbit {(0,0)}, s=3  ─┘ conjugate pair with idx 1
+#   idx 4: 4D, orbit {(0,1),(2,0),(0,2),(1,0)}, s=0 — self-conjugate
+#   idx 5: 4D, orbit {(1,1),(2,1),(2,2),(1,2)}, s=0 — self-conjugate
+#
+# Conjugate-symmetry constraint (real signal): powers[1] == powers[3].
 
 data:
-  group_name: znxzn_c4        # Group family
-  p: 3                        # n in Z_n^2 ⋊ C_4
+  group_name: znxzn_cm        # Group family (registered name in make_group)
+  p: 3                        # n in Z_n^2 ⋊ C_m
+  m: 4                        # m in Z_n^2 ⋊ C_m (C_4 rotation)
   k: 2                        # Sequence length (number of group elements to compose)
   batch_size: 128             # Training batch size
   seed: 10                    # Random seed for reproducibility
@@ -13,10 +24,11 @@ data:
   mode: exhaustive            # Dataset mode: 'sampled' | 'exhaustive'
   num_samples: 1000           # Number of samples (used when mode='sampled')
 
-  # custom_fourier powers (one per irrep)
+  # custom_fourier powers (one per irrep, indexed as above)
   # Z_3^2 ⋊ C_4 irreps: [1, 1, 1, 1, 4, 4]
-  # Well-separated powers for clean staircase learning
-  powers: [0.0, 10.0, 100.0, 1000.0, 5000.0, 20000.0]
+  # Conjugate pair (idx 1, idx 3) must receive equal power.
+  # Well-separated powers for clean staircase learning.
+  powers: [0.0, 10.0, 100.0, 10.0, 1000.0, 5000.0]
 
 model:
   model_type: TwoLayerMLP     # Model architecture: 'QuadraticRNN' | 'TwoLayerMLP'
