@@ -74,7 +74,7 @@ class Group(ABC):
 
         def _at_element(g):
             return (1.0 / n) * sum(
-                irrep.size * np.trace(irrep(g) @ fourier_coefs[i]) for i, irrep in enumerate(irreps)
+                irrep.dim * np.trace(irrep(g) @ fourier_coefs[i]) for i, irrep in enumerate(irreps)
             )
 
         return np.array([_at_element(g) for g in range(n)])
@@ -104,5 +104,5 @@ class Group(ABC):
         ps = np.zeros(len(irreps))
         for i, irrep in enumerate(irreps):
             fc = fourier_coefs[i]
-            ps[i] = np.real(irrep.size * np.trace(fc.conj().T @ fc)) / self.order
+            ps[i] = np.real(irrep.dim * np.trace(fc.conj().T @ fc)) / self.order
         return ps

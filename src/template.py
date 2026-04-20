@@ -33,7 +33,7 @@ def custom_fourier(group, powers):
     """
     group_order = group.order
     irreps = group.irreps()
-    irrep_dims = [ir.size for ir in irreps]
+    irrep_dims = [ir.dim for ir in irreps]
 
     assert len(powers) == len(irreps), (
         f"powers must have {len(irreps)} values (one per irrep), got {len(powers)}"
@@ -46,8 +46,8 @@ def custom_fourier(group, powers):
     spectrum = []
     for i, irrep in enumerate(irreps):
         diag_val = fourier_coef_diag_values[i]
-        mat = np.zeros((irrep.size, irrep.size), dtype=float)
-        np.fill_diagonal(mat, np.full(irrep.size, diag_val, dtype=float))
+        mat = np.zeros((irrep.dim, irrep.dim), dtype=float)
+        np.fill_diagonal(mat, np.full(irrep.dim, diag_val, dtype=float))
         spectrum.append(mat)
 
     template = group.inverse_fourier(spectrum)
