@@ -2,7 +2,7 @@
 
 The semidirect product of the translation group Z_n × Z_n with the cyclic
 rotation group C_m, where the semidirect product is defined by the group homomorphism
-φ: C_m → Aut(Z_n²) given by φ(r^k) = A^k, where A is planar rotation matrix such that A^m = I 
+φ: C_m → Aut(Z_n²) given by φ(r^k) = A^k, where A is planar rotation matrix such that A^m = I
 and A is modulo n.
 
 Standard actions (crystallographic restriction):
@@ -255,13 +255,13 @@ class DiscreteSE2Group(Group):
 
         for orbit_size in sorted(orbit_dict):
             for orb_idx, orbit in enumerate(orbit_dict[orbit_size]):
-                h = m // orbit_size # order of stabilizer subgroup of C_m on elements of the orbit; 
+                h = m // orbit_size # order of stabilizer subgroup of C_m on elements of the orbit;
                 # h = number of irreps contributed by this orbit, each of dimension orbit_size * (dimension of stabilizer irreps).
                 # since stabilizers here are all cyclic groups, all their irreps have dimension 1, so dim = orbit_size * 1.
                 dim = orbit_size * 1
 
                 for s in range(h):
-                    mats = np.zeros((order, dim, dim), dtype=np.complex128) # one dim by dim matrix for each element in G 
+                    mats = np.zeros((order, dim, dim), dtype=np.complex128) # one dim by dim matrix for each element in G
 
                     for idx in range(order): # loop over elements in G
                         x, y, r = self._decode(idx)
