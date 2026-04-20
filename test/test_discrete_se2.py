@@ -8,12 +8,12 @@ from src.groups.znxzn_cm import DiscreteSE2Group
 # Small (n, m) pairs used across most tests.  Chosen to keep group order low
 # while covering every valid m value.
 SMALL_PARAMS = [
-    (2, 1),   # order  4  – trivial rotation
-    (2, 2),   # order  8  – 180° half-turn
-    (2, 3),   # order 12  – 120°
-    (2, 4),   # order 16  – 90°
-    (3, 3),   # order 27  – 120°
-    (2, 6),   # order 24  – 60°
+    (2, 1),  # order  4  – trivial rotation
+    (2, 2),  # order  8  – 180° half-turn
+    (2, 3),  # order 12  – 120°
+    (2, 4),  # order 16  – 90°
+    (3, 3),  # order 27  – 120°
+    (2, 6),  # order 24  – 60°
 ]
 
 IDS = [f"n{n}_m{m}" for n, m in SMALL_PARAMS]
@@ -28,6 +28,7 @@ def group(request):
 # ---------------------------------------------------------------------------
 # Construction & validation
 # ---------------------------------------------------------------------------
+
 
 class TestConstruction:
     @pytest.mark.parametrize("n,m", SMALL_PARAMS, ids=IDS)
@@ -54,6 +55,7 @@ class TestConstruction:
 # Encode / decode
 # ---------------------------------------------------------------------------
 
+
 class TestEncodeDecode:
     def test_roundtrip_all_elements(self, group):
         for idx in range(group.order):
@@ -72,6 +74,7 @@ class TestEncodeDecode:
 # ---------------------------------------------------------------------------
 # Group axioms
 # ---------------------------------------------------------------------------
+
 
 class TestGroupAxioms:
     def _identity(self, group):
@@ -112,6 +115,7 @@ class TestGroupAxioms:
 # Regular representation
 # ---------------------------------------------------------------------------
 
+
 class TestRegularRep:
     def test_shape(self, group):
         reg = group.regular_rep()
@@ -145,11 +149,12 @@ class TestRegularRep:
 # Irreducible representations
 # ---------------------------------------------------------------------------
 
+
 class TestIrreps:
     def test_peter_weyl_dimension_sum(self, group):
         """Sum of dim² must equal |G| (Peter–Weyl theorem)."""
         irreps = group.irreps()
-        assert sum(ir.dim ** 2 for ir in irreps) == group.order
+        assert sum(ir.dim**2 for ir in irreps) == group.order
 
     def test_irrep_matrices_are_unitary(self, group):
         for irrep in group.irreps():
@@ -157,7 +162,9 @@ class TestIrreps:
                 mat = irrep(g)
                 eye = np.eye(irrep.dim)
                 np.testing.assert_allclose(
-                    mat.conj().T @ mat, eye, atol=1e-10,
+                    mat.conj().T @ mat,
+                    eye,
+                    atol=1e-10,
                     err_msg=f"irrep {irrep._name} not unitary at g={g}",
                 )
 
@@ -171,7 +178,9 @@ class TestIrreps:
                 g, h = int(g), int(h)
                 gh = group.compose(g, h)
                 np.testing.assert_allclose(
-                    irrep(gh), irrep(g) @ irrep(h), atol=1e-10,
+                    irrep(gh),
+                    irrep(g) @ irrep(h),
+                    atol=1e-10,
                     err_msg=f"irrep {irrep._name} homomorphism failed at g={g}, h={h}",
                 )
 
@@ -180,7 +189,9 @@ class TestIrreps:
         e = group._encode(0, 0, 0)
         for irrep in group.irreps():
             np.testing.assert_allclose(
-                irrep(e), np.eye(irrep.dim), atol=1e-10,
+                irrep(e),
+                np.eye(irrep.dim),
+                atol=1e-10,
                 err_msg=f"irrep {irrep._name} ρ(e) != I",
             )
 
@@ -188,6 +199,7 @@ class TestIrreps:
 # ---------------------------------------------------------------------------
 # Fourier analysis
 # ---------------------------------------------------------------------------
+
 
 class TestFourier:
     def _signal(self, group, seed=42):
@@ -199,7 +211,9 @@ class TestFourier:
         coefs = group.fourier(signal)
         reconstructed = group.inverse_fourier(coefs)
         np.testing.assert_allclose(
-            np.real(reconstructed), signal, atol=1e-10,
+            np.real(reconstructed),
+            signal,
+            atol=1e-10,
             err_msg="Fourier roundtrip failed",
         )
 
@@ -225,8 +239,7 @@ class TestFourier:
         signal = self._signal(group)
         coefs = group.fourier(signal)
         lhs = sum(
-            ir.dim * np.real(np.trace(c.conj().T @ c))
-            for ir, c in zip(group.irreps(), coefs)
+            ir.dim * np.real(np.trace(c.conj().T @ c)) for ir, c in zip(group.irreps(), coefs)
         )
         rhs = group.order * float(signal @ signal)
         assert lhs == pytest.approx(rhs, rel=1e-8)

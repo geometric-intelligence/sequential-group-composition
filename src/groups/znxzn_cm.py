@@ -63,7 +63,9 @@ class DiscreteSE2Group(Group):
         self._order_val = m * n * n
 
         self._A: np.ndarray = _STANDARD_ACTIONS[m] % n
-        self._rot_mats: list[np.ndarray] = self._precompute_rotations() # A^k mod n for k = 0, ..., m-1
+        self._rot_mats: list[np.ndarray] = (
+            self._precompute_rotations()
+        )  # A^k mod n for k = 0, ..., m-1
 
         actual_order = self._matrix_order()
         if actual_order is None:
@@ -168,7 +170,7 @@ class DiscreteSE2Group(Group):
         for order in range(1, self._m):
             if np.array_equal(self._rot_mats[order], identity):
                 return order
-        A_m = (self._rot_mats[-1]@self._A) % self._n
+        A_m = (self._rot_mats[-1] @ self._A) % self._n
         if np.array_equal(A_m, identity):
             return self._m
         else:
@@ -184,9 +186,7 @@ class DiscreteSE2Group(Group):
         c, d = int(self._A[1, 0]), int(self._A[1, 1])
         det = (a * d - b * c) % n
         if math.gcd(det, n) != 1:
-            raise ValueError(
-                f"Action matrix is not invertible mod {n}: det = {det}."
-            )
+            raise ValueError(f"Action matrix is not invertible mod {n}: det = {det}.")
         det_inv = pow(det, -1, n)
         A_inv = (det_inv * np.array([[d, -b], [-c, a]], dtype=int)) % n
         return A_inv.T % n
@@ -209,8 +209,7 @@ class DiscreteSE2Group(Group):
         """
         n, m = self._n, self._m
 
-
-        visited: set[tuple[int, int]] = set() # set of visited characters
+        visited: set[tuple[int, int]] = set()  # set of visited characters
         orbits_by_size: dict[int, list[list[tuple[int, int]]]] = {}
 
         for j1 in range(n):
@@ -248,29 +247,31 @@ class DiscreteSE2Group(Group):
         """
         n, m = self._n, self._m
         order = self._order_val
-        omega = np.exp(2j * np.pi / n) # nth root of unity
+        omega = np.exp(2j * np.pi / n)  # nth root of unity
 
         orbit_dict = self._compute_char_orbits()
         irreps: list[IrreducibleRepresentation] = []
 
         for orbit_size in sorted(orbit_dict):
             for orb_idx, orbit in enumerate(orbit_dict[orbit_size]):
-                h = m // orbit_size # order of stabilizer subgroup of C_m on elements of the orbit;
+                h = m // orbit_size  # order of stabilizer subgroup of C_m on elements of the orbit;
                 # h = number of irreps contributed by this orbit, each of dimension orbit_size * (dimension of stabilizer irreps).
                 # since stabilizers here are all cyclic groups, all their irreps have dimension 1, so dim = orbit_size * 1.
                 dim = orbit_size * 1
 
                 for s in range(h):
-                    mats = np.zeros((order, dim, dim), dtype=np.complex128) # one dim by dim matrix for each element in G
+                    mats = np.zeros(
+                        (order, dim, dim), dtype=np.complex128
+                    )  # one dim by dim matrix for each element in G
 
-                    for idx in range(order): # loop over elements in G
+                    for idx in range(order):  # loop over elements in G
                         x, y, r = self._decode(idx)
 
                         for j in range(dim):
                             # j is the index of the character in the orbit
-                            total = r + j # shift by r
-                            i = total % dim # wrap around
-                            q = total // dim # number of wrap-arounds
+                            total = r + j  # shift by r
+                            i = total % dim  # wrap around
+                            q = total // dim  # number of wrap-arounds
 
                             a_i, b_i = orbit[i]
                             char_val = omega ** (a_i * x + b_i * y)
@@ -282,5 +283,3 @@ class DiscreteSE2Group(Group):
                     irreps.append(IrreducibleRepresentation(name, mats))
 
         return irreps
-
-
